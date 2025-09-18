@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 48 20% 97%; /* Cream background */
+    --foreground: 160 84% 15%; /* Dark forest green */
+
+    --card: 48 20% 95%;
+    --card-foreground: 160 84% 15%;
+
+    --popover: 48 20% 97%;
+    --popover-foreground: 160 84% 15%;
+
+    --primary: 160 100% 22%; /* Forest green */
+    --primary-foreground: 48 20% 97%;
+
+    --secondary: 48 20% 90%;
+    --secondary-foreground: 160 84% 15%;
+
+    --muted: 48 20% 90%;
+    --muted-foreground: 160 50% 35%;
+
+    --accent: 48 30% 85%;
+    --accent-foreground: 160 84% 15%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 48 20% 97%;
+
+    --border: 48 20% 85%;
+    --input: 48 20% 85%;
+    --ring: 160 100% 22%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 160 84% 8%; /* Dark forest green background */
+    --foreground: 48 20% 97%; /* Cream foreground */
+
+    --card: 160 84% 10%;
+    --card-foreground: 48 20% 97%;
+
+    --popover: 160 84% 8%;
+    --popover-foreground: 48 20% 97%;
+
+    --primary: 48 20% 97%; /* Cream primary in dark mode */
+    --primary-foreground: 160 84% 15%;
+
+    --secondary: 160 84% 15%;
+    --secondary-foreground: 48 20% 97%;
+
+    --muted: 160 84% 15%;
+    --muted-foreground: 48 20% 70%;
+
+    --accent: 160 84% 15%;
+    --accent-foreground: 48 20% 97%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 48 20% 97%;
+
+    --border: 160 84% 15%;
+    --input: 160 84% 15%;
+    --ring: 48 20% 97%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom styles for UrbanSprout */
+.hero-gradient {
+  background: linear-gradient(135deg, #00704a 0%, #005c3d 50%, #f4e4c1 100%);
+}
+
+.glass-effect {
+  backdrop-filter: blur(10px);
+  background: rgba(244, 228, 193, 0.1);
+  border: 1px solid rgba(244, 228, 193, 0.2);
+}
+
+.text-shadow {
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-cream-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-forest-green-500 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-forest-green-600;
+}
+
+/* Quick Tips Slideshow Animation */
+@keyframes zoomOut {
+  0% {
+    transform: scale(1.1);
+    opacity: 0;
+  }
+  10% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  90% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+}
