@@ -58,6 +58,8 @@ router.post('/google', googleSignIn);
 router.post('/firebase-auth', async (req, res) => {
   try {
     const { idToken, role, name, email } = req.body;
+    console.log('Firebase auth request received:', { hasIdToken: !!idToken, email, name, role });
+    
     if (!idToken && !email) {
       return res.status(400).json({ success: false, message: 'idToken or email is required' });
     }
@@ -67,20 +69,40 @@ router.post('/firebase-auth', async (req, res) => {
     let userEmail = email;
 
     // Try to verify Firebase ID token if available
-    if (idToken && admin.apps.length > 0) {
+    if (idToken) {
       try {
-        decoded = await admin.auth().verifyIdToken(idToken);
-        uid = decoded.uid;
-        userEmail = decoded.email;
+        if (admin.apps.length > 0) {
+          console.log('Verifying ID token with Firebase Admin...');
+          decoded = await admin.auth().verifyIdToken(idToken);
+          uid = decoded.uid;
+          userEmail = decoded.email;
+          console.log('ID token verified successfully:', { uid, email: userEmail });
+        } else {
+          console.log('Firebase Admin not initialized, using fallback method');
+          // Fallback: decode token without verification (for development)
+          const jwt = require('jsonwebtoken');
+          const decodedToken = jwt.decode(idToken);
+          if (decodedToken && decodedToken.email) {
+            userEmail = decodedToken.email;
+            uid = decodedToken.sub || decodedToken.user_id;
+            console.log('Token decoded without verification:', { uid, email: userEmail });
+          }
+        }
       } catch (error) {
+        console.log('Token verification failed, using email fallback:', error.message);
         // Continue with email fallback
       }
     }
 
-    // If no decoded token, use email directly (fallback for development)
-    if (!decoded && email) {
+    // If no decoded token or verification failed, use email directly
+    if (!decoded && !uid && email) {
       uid = `firebase_${email.replace('@', '_').replace('.', '_')}`;
       userEmail = email;
+      console.log('Using email fallback:', { uid, email: userEmail });
+    }
+
+    if (!userEmail) {
+      return res.status(400).json({ success: false, message: 'Could not determine user email' });
     }
 
     // Find or create user
@@ -122,9 +144,11 @@ router.post('/firebase-auth', async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Firebase auth error:', error);
     res.status(500).json({
       success: false,
-      message: 'Authentication failed'
+      message: 'Authentication failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 });

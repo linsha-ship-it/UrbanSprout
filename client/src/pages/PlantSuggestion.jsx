@@ -1,490 +1,406 @@
-import React, { useState } from 'react'
-import { motion } from 'framer-motion'
-import { Sun, Droplets, Home, Clock, ChevronRight, Heart } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
+import { 
+  FaLeaf, 
+  FaSun, 
+  FaHome, 
+  FaClock, 
+  FaSeedling,
+  FaRobot,
+  FaTimes,
+  FaShoppingCart
+} from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
+import { apiCall } from '../utils/api'
 
 const PlantSuggestion = () => {
   const { user } = useAuth()
-  const [currentStep, setCurrentStep] = useState(0)
-  const [preferences, setPreferences] = useState({
-    lightLevel: '',
-    wateringFrequency: '',
-    spaceType: '',
-    experience: '',
-    petFriendly: false,
-    airPurifying: false
-  })
-  const [showResults, setShowResults] = useState(false)
+  const navigate = useNavigate()
+  const [messages, setMessages] = useState([])
+  const [isTyping, setIsTyping] = useState(false)
+  const [sessionId, setSessionId] = useState(null)
+  const messagesEndRef = useRef(null)
 
-  const steps = [
-    {
-      title: "Light Conditions",
-      description: "How much natural light does your space receive?",
-      icon: Sun,
-      options: [
-        { value: 'low', label: 'Low Light', description: 'North-facing windows, minimal direct sunlight' },
-        { value: 'medium', label: 'Medium Light', description: 'East or west-facing windows, some direct sunlight' },
-        { value: 'high', label: 'Bright Light', description: 'South-facing windows, lots of direct sunlight' }
-      ]
-    },
-    {
-      title: "Watering Preference",
-      description: "How often would you like to water your plants?",
-      icon: Droplets,
-      options: [
-        { value: 'low', label: 'Low Maintenance', description: 'Water once every 2-3 weeks' },
-        { value: 'medium', label: 'Moderate Care', description: 'Water once a week' },
-        { value: 'high', label: 'Daily Care', description: 'Water every few days, enjoy frequent care' }
-      ]
-    },
-    {
-      title: "Space Type",
-      description: "Where will you be placing your plants?",
-      icon: Home,
-      options: [
-        { value: 'apartment', label: 'Small Apartment', description: 'Limited space, windowsills, small tables' },
-        { value: 'house', label: 'House', description: 'Multiple rooms, floor space available' },
-        { value: 'office', label: 'Office', description: 'Desk space, artificial lighting' },
-        { value: 'balcony', label: 'Balcony/Patio', description: 'Outdoor space, varying weather conditions' }
-      ]
-    },
-    {
-      title: "Experience Level",
-      description: "How would you describe your plant care experience?",
-      icon: Clock,
-      options: [
-        { value: 'beginner', label: 'Beginner', description: 'New to plant care, want easy plants' },
-        { value: 'intermediate', label: 'Intermediate', description: 'Some experience, ready for moderate challenge' },
-        { value: 'expert', label: 'Expert', description: 'Experienced, enjoy challenging plants' }
+  // Initialize chat with welcome message
+  useEffect(() => {
+    const welcomeMessage = {
+      id: Date.now(),
+      type: 'bot',
+      content: "Hi! 🌱 I'm your plant suggestion assistant. I'll help you find the perfect vegetables, fruits, and herbs to grow based on your space, time, and sunlight availability. What would you like to grow?",
+      timestamp: new Date(),
+      buttons: [
+        "I'm a beginner, give me suggestions",
+        "I want specific recommendations", 
+        "Show me quick growing options"
       ]
     }
-  ]
+    setMessages([welcomeMessage])
+    setSessionId(`session_${Date.now()}`)
+  }, [])
 
-  // Helper: derive simple sunlight category from the existing light text
-  const deriveSunlight = (lightText = "") => {
-    const t = lightText.toLowerCase()
-    if (t.includes('bright') || t.includes('direct')) return 'High sunlight'
-    if (t.includes('medium') || t.includes('indirect')) return 'Partial sunlight'
-    if (t.includes('low') || t.includes('shade')) return 'Limited sunlight'
-    return 'Partial sunlight'
+  // Auto scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const sendMessage = async (messageText) => {
+    if (!messageText.trim()) return
+
+    const userMessage = {
+      id: Date.now(),
+      type: 'user',
+      content: messageText,
+      timestamp: new Date()
+    }
+
+    setMessages(prev => [...prev, userMessage])
+    setIsTyping(true)
+
+    try {
+      const response = await apiCall('/chatbot', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: messageText,
+          userId: sessionId
+        })
+      })
+
+      if (response.success) {
+        const botMessage = {
+          id: Date.now() + 1,
+          type: 'bot',
+          content: response.data.message,
+          timestamp: new Date(),
+          buttons: response.data.buttons || [],
+          plants: response.data.plants || [],
+          storeItems: response.data.storeItems || []
+        }
+        
+        setTimeout(() => {
+          setMessages(prev => [...prev, botMessage])
+          setIsTyping(false)
+        }, 800) // Reduced typing delay for better responsiveness
+      } else {
+        // Handle API errors more gracefully
+        const errorMessage = {
+          id: Date.now() + 1,
+          type: 'bot',
+          content: response.message || "I didn't quite understand that. Let me help you get started!",
+          timestamp: new Date(),
+          buttons: ["I'm a beginner, give me suggestions", "Show me quick growing options", "I want specific recommendations"]
+        }
+        setMessages(prev => [...prev, errorMessage])
+        setIsTyping(false)
+      }
+    } catch (error) {
+      console.error('Error sending message:', error)
+      const errorMessage = {
+        id: Date.now() + 1,
+        type: 'bot',
+        content: "I'm having trouble connecting right now, but I can still help! Try asking about specific plants like 'lettuce', 'tomatoes', or 'herbs'.",
+        timestamp: new Date(),
+        buttons: ["I'm a beginner, give me suggestions", "Show me quick growing options", "Try again"]
+      }
+      setMessages(prev => [...prev, errorMessage])
+      setIsTyping(false)
+    }
   }
 
-  const plantSuggestions = [
-    {
-      id: 1,
-      name: "Snake Plant",
-      scientificName: "Sansevieria trifasciata",
-      difficulty: "Beginner",
-      light: "Low to Bright",
-      water: "Every 2-3 weeks",
-      features: ["Air Purifying", "Pet Safe", "Low Maintenance"],
-      description: "Perfect for beginners, tolerates neglect and low light conditions.",
-      image: "🐍",
-      rating: 4.8,
-      price: "$25",
-      category: "Herb", // example category
-      growthTime: "2–3 months", // example duration
-      sunlight: deriveSunlight("Low to Bright")
-    },
-    {
-      id: 2,
-      name: "Pothos",
-      scientificName: "Epipremnum aureum",
-      difficulty: "Beginner",
-      light: "Low to Medium",
-      water: "Weekly",
-      features: ["Fast Growing", "Air Purifying", "Trailing"],
-      description: "Versatile vine that thrives in various conditions and grows quickly.",
-      image: "🌿",
-      rating: 4.9,
-      price: "$18",
-      category: "Herb",
-      growthTime: "6–8 weeks",
-      sunlight: deriveSunlight("Low to Medium")
-    },
-    {
-      id: 3,
-      name: "Monstera Deliciosa",
-      scientificName: "Monstera deliciosa",
-      difficulty: "Intermediate",
-      light: "Medium to Bright",
-      water: "Weekly",
-      features: ["Statement Plant", "Large Leaves", "Instagram Famous"],
-      description: "Stunning split leaves make this a perfect statement plant for any room.",
-      image: "🌱",
-      rating: 4.7,
-      price: "$45",
-      category: "Vegetable",
-      growthTime: "3–5 months",
-      sunlight: deriveSunlight("Medium to Bright")
-    },
-    {
-      id: 4,
-      name: "ZZ Plant",
-      scientificName: "Zamioculcas zamiifolia",
-      difficulty: "Beginner",
-      light: "Low to Medium",
-      water: "Every 2-3 weeks",
-      features: ["Drought Tolerant", "Low Light", "Glossy Leaves"],
-      description: "Extremely low maintenance with glossy, attractive foliage.",
-      image: "🌿",
-      rating: 4.6,
-      price: "$32",
-      category: "Herb",
-      growthTime: "2–4 months",
-      sunlight: deriveSunlight("Low to Medium")
-    }
-  ]
+  const handleButtonClick = (buttonText) => {
+    sendMessage(buttonText)
+  }
 
-  const handleOptionSelect = (value) => {
-    const currentStepKey = steps[currentStep].title.toLowerCase().replace(' ', '')
-    setPreferences(prev => ({
-      ...prev,
-      [currentStepKey === 'lightconditions' ? 'lightLevel' : 
-       currentStepKey === 'wateringpreference' ? 'wateringFrequency' :
-       currentStepKey === 'spacetype' ? 'spaceType' : 'experience']: value
-    }))
-
-    if (currentStep < steps.length - 1) {
-      setTimeout(() => setCurrentStep(currentStep + 1), 300)
+  const handleStoreItemClick = (item) => {
+    // Navigate to store with the specific item highlighted
+    if (item.id) {
+      navigate(`/store?highlight=${item.id}`)
     } else {
-      setTimeout(() => setShowResults(true), 300)
+      // Fallback to store page if no ID
+      navigate('/store')
     }
   }
 
-  const resetQuiz = () => {
-    setCurrentStep(0)
-    setShowResults(false)
-    setPreferences({
-      lightLevel: '',
-      wateringFrequency: '',
-      spaceType: '',
-      experience: '',
-      petFriendly: false,
-      airPurifying: false
-    })
-  }
-
-  // Rank plants based on current selections; used for live suggestions per step
-  const rankPlant = (plant) => {
-    let score = 0
-    const lightText = plant.light?.toLowerCase() || ''
-    const diffText = plant.difficulty?.toLowerCase() || ''
-    const spaceText = (plant.space || '').toLowerCase()
-
-    if (preferences.lightLevel) {
-      if (preferences.lightLevel === 'low' && lightText.includes('low')) score += 2
-      if (preferences.lightLevel === 'medium' && lightText.includes('medium')) score += 2
-      if (preferences.lightLevel === 'high' && (lightText.includes('bright') || lightText.includes('high'))) score += 2
+  const handleRestart = () => {
+    const welcomeMessage = {
+      id: Date.now(),
+      type: 'bot',
+      content: "Let's start fresh! 🌱 What would you like to grow?",
+      timestamp: new Date(),
+      buttons: [
+        "I'm a beginner, give me suggestions",
+        "I want specific recommendations", 
+        "Show me quick growing options"
+      ]
     }
-    if (preferences.experience && diffText.includes(preferences.experience)) score += 1
-    if (preferences.spaceType && spaceText.includes(preferences.spaceType)) score += 1
-    // Favor air purifying or pet safe when toggled later
-    if (preferences.airPurifying && plant.features?.some(f => /air/i.test(f))) score += 1
-    if (preferences.petFriendly && plant.features?.some(f => /pet/i.test(f))) score += 1
-    return score
+    setMessages([welcomeMessage])
+    setSessionId(`session_${Date.now()}`)
   }
 
-  const recommendedPlants = [...plantSuggestions]
-    .sort((a, b) => rankPlant(b) - rankPlant(a))
-    .slice(0, 8)
+  const formatTime = (timestamp) => {
+    return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
 
-  if (showResults) {
-    return (
-      <div className="min-h-screen bg-cream-50 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Results Header */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="text-center mb-12"
-          >
-            <h1 className="text-4xl font-bold text-forest-green-800 mb-4">
-              Perfect Plants for You! 🌱
-            </h1>
-            <p className="text-lg text-forest-green-600 max-w-2xl mx-auto mb-6">
-              Based on your preferences, here are our top plant recommendations that will thrive in your space.
-            </p>
-            <button
-              onClick={resetQuiz}
-              className="text-forest-green-500 hover:text-forest-green-600 font-medium"
-            >
-              Take Quiz Again
-            </button>
-          </motion.div>
+  const getPlantIcon = (type) => {
+    switch (type) {
+      case 'vegetable': return '🥬'
+      case 'fruit': return '🍓'
+      case 'herb': return '🌿'
+      default: return '🌱'
+    }
+  }
 
-          {/* Plant Suggestions */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-10 max-w-6xl mx-auto">
-            {Array.from({ length: 8 }, (_, idx) => plantSuggestions[idx % plantSuggestions.length]).map((plant, index) => (
-              <motion.div
-                key={`${plant.id}-${index}`}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: index * 0.2 }}
-                className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300 min-h-[480px]"
-              >
-                {/* Plant Info (Simplified) */}
-                <div className="p-6">
-                  {/* Name */}
-                  <h3 className="text-2xl font-bold text-forest-green-800 mb-4 leading-snug break-words">
-                    {plant.name}
-                  </h3>
+  const getMaintenanceIcon = (level) => {
+    switch (level) {
+      case 'low': return <FaClock className="text-green-500" />
+      case 'medium': return <FaClock className="text-yellow-500" />
+      case 'high': return <FaClock className="text-red-500" />
+      default: return <FaClock className="text-gray-500" />
+    }
+  }
 
-                  {/* Blue box: Type/Category */}
-                  <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
-                    <div className="text-sm text-blue-700">Type</div>
-                    <div className="text-blue-900 font-semibold">{plant.category}</div>
-                  </div>
+  const getSunlightIcon = (level) => {
+    switch (level) {
+      case 'low': return <FaSun className="text-blue-500" />
+      case 'partial': return <FaSun className="text-yellow-500" />
+      case 'full': return <FaSun className="text-orange-500" />
+      default: return <FaSun className="text-gray-500" />
+    }
+  }
 
-                  {/* Yellow box: Sunlight */}
-                  <div className="mb-6 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
-                    <div className="text-sm text-yellow-700">Sunlight</div>
-                    <div className="text-yellow-900 font-semibold">{plant.sunlight}</div>
-                  </div>
-
-                  {/* Add to my garden button */}
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => {
-                        try {
-                          const key = `my_garden_${user?.id || user?.uid || user?.email || 'guest'}`
-                          const existing = JSON.parse(localStorage.getItem(key) || '[]')
-                          if (!existing.includes(plant.name)) {
-                            const next = [...existing, plant.name]
-                            localStorage.setItem(key, JSON.stringify(next))
-                          }
-                        } catch (e) {
-                          console.error('Failed to save to garden', e)
-                        }
-                      }}
-                      className="px-4 py-2 bg-forest-green-500 text-cream-100 rounded-lg hover:bg-forest-green-600 transition-colors"
-                    >
-                      Add to my garden
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Care Tips */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.6 }}
-            className="mt-16 bg-white rounded-xl shadow-lg p-8"
-          >
-            <h2 className="text-2xl font-bold text-forest-green-800 mb-6 text-center">
-              Getting Started Tips
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="text-center">
-                <div className="w-12 h-12 bg-forest-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Sun className="h-6 w-6 text-forest-green-600" />
-                </div>
-                <h3 className="font-semibold text-forest-green-800 mb-2">Placement</h3>
-                <p className="text-sm text-forest-green-600">
-                  Place your plants near windows but avoid direct harsh sunlight that can burn leaves.
-                </p>
-              </div>
-              <div className="text-center">
-                <div className="w-12 h-12 bg-forest-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Droplets className="h-6 w-6 text-forest-green-600" />
-                </div>
-                <h3 className="font-semibold text-forest-green-800 mb-2">Watering</h3>
-                <p className="text-sm text-forest-green-600">
-                  Check soil moisture with your finger. Water when the top inch feels dry.
-                </p>
-              </div>
-              <div className="text-center">
-                <div className="w-12 h-12 bg-forest-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Heart className="h-6 w-6 text-forest-green-600" />
-                </div>
-                <h3 className="font-semibold text-forest-green-800 mb-2">Patience</h3>
-                <p className="text-sm text-forest-green-600">
-                  Plants need time to adjust to new environments. Don't worry if they look stressed initially.
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </div>
-    )
+  const getSpaceIcon = (level) => {
+    switch (level) {
+      case 'small': return <FaHome className="text-green-500" />
+      case 'medium': return <FaHome className="text-blue-500" />
+      case 'large': return <FaHome className="text-purple-500" />
+      default: return <FaHome className="text-gray-500" />
+    }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-forest-green-50 to-cream-100 py-12">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-forest-green-50 to-cream-100 py-4">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 h-[95vh] flex flex-col">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
-          className="text-center mb-12"
+          className="text-center mb-4"
         >
-          <h1 className="text-4xl font-bold text-forest-green-800 mb-4">
-            Find Your Perfect Plants
+          <h1 className="text-3xl font-bold text-forest-green-800 mb-2">
+            Plant Suggestion Assistant
           </h1>
-          <p className="text-lg text-forest-green-600 max-w-2xl mx-auto">
-            Answer a few questions and we'll recommend the best plants for your space, 
-            lifestyle, and experience level.
+          <p className="text-base text-forest-green-600 max-w-2xl mx-auto">
+            Chat with our AI assistant to find the perfect vegetables, fruits, and herbs for your growing space.
           </p>
         </motion.div>
 
-        {/* Progress Bar */}
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm text-forest-green-600">
-              Question {currentStep + 1} of {steps.length}
-            </span>
-            <span className="text-sm text-forest-green-600">
-              {Math.round(((currentStep + 1) / steps.length) * 100)}% Complete
-            </span>
-          </div>
-          <div className="w-full bg-forest-green-100 rounded-full h-2">
-            <motion.div
-              className="bg-forest-green-500 h-2 rounded-full"
-              initial={{ width: 0 }}
-              animate={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
-              transition={{ duration: 0.5 }}
-            />
-          </div>
-        </div>
-
-        {/* Question Card */}
+        {/* Chat Container */}
         <motion.div
-          key={currentStep}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="bg-white rounded-xl shadow-lg p-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+          className="bg-white rounded-2xl shadow-xl overflow-hidden flex-1 flex flex-col"
         >
-          {/* Question Header */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-forest-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              {React.createElement(steps[currentStep].icon, { className: "h-8 w-8 text-forest-green-600" })}
+          {/* Chat Header */}
+          <div className="bg-gradient-to-r from-forest-green-500 to-forest-green-600 text-white p-4 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                <FaRobot className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Plant Assistant</h3>
+                <p className="text-xs text-forest-green-100">Online</p>
+              </div>
             </div>
-            <h2 className="text-2xl font-bold text-forest-green-800 mb-2">
-              {steps[currentStep].title}
-            </h2>
-            <p className="text-forest-green-600">
-              {steps[currentStep].description}
-            </p>
+            <button
+              onClick={handleRestart}
+              className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
+              title="Start Over"
+            >
+              <FaTimes className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* Options */}
-          <div className="space-y-4">
-            {steps[currentStep].options.map((option, index) => (
-              <motion.button
-                key={option.value}
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <AnimatePresence>
+              {messages.map((message) => (
+                <motion.div
+                  key={message.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                onClick={() => handleOptionSelect(option.value)}
-                className="w-full p-4 text-left border-2 border-forest-green-200 rounded-lg hover:border-forest-green-400 hover:bg-forest-green-50 transition-all duration-300 group"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-forest-green-800 group-hover:text-forest-green-600 mb-1">
-                      {option.label}
-                    </h3>
-                    <p className="text-sm text-forest-green-600">
-                      {option.description}
+                  exit={{ opacity: 0, y: -20 }}
+                  className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div className={`max-w-[80%] ${message.type === 'user' ? 'order-2' : 'order-1'}`}>
+                    {/* Message Bubble */}
+                    <div
+                      className={`px-4 py-3 rounded-2xl ${
+                        message.type === 'user'
+                          ? 'bg-forest-green-500 text-white rounded-br-md'
+                          : 'bg-gray-100 text-gray-800 rounded-bl-md'
+                      }`}
+                    >
+                      <p className="text-sm leading-relaxed">{message.content}</p>
+                      <p className={`text-xs mt-1 ${
+                        message.type === 'user' ? 'text-forest-green-100' : 'text-gray-500'
+                      }`}>
+                        {formatTime(message.timestamp)}
                     </p>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-forest-green-400 group-hover:text-forest-green-600 transition-colors" />
-                </div>
+
+                    {/* Quick Reply Buttons */}
+                    {message.buttons && message.buttons.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {message.buttons.map((button, index) => (
+                          <motion.button
+                            key={index}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                            onClick={() => handleButtonClick(button)}
+                            className="block w-full text-left px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-forest-green-50 hover:border-forest-green-300 transition-colors text-sm"
+                          >
+                            {button}
               </motion.button>
             ))}
           </div>
+                    )}
 
-          {/* Additional Options for Last Step */}
-          {currentStep === steps.length - 1 && (
-            <div className="mt-8 pt-6 border-t border-forest-green-200">
-              <h3 className="font-semibold text-forest-green-800 mb-4">Additional Preferences (Optional)</h3>
-              <div className="space-y-3">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={preferences.petFriendly}
-                    onChange={(e) => setPreferences(prev => ({ ...prev, petFriendly: e.target.checked }))}
-                    className="h-4 w-4 text-forest-green-600 focus:ring-forest-green-500 border-forest-green-300 rounded"
-                  />
-                  <span className="ml-2 text-forest-green-700">Pet-friendly plants only</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={preferences.airPurifying}
-                    onChange={(e) => setPreferences(prev => ({ ...prev, airPurifying: e.target.checked }))}
-                    className="h-4 w-4 text-forest-green-600 focus:ring-forest-green-500 border-forest-green-300 rounded"
-                  />
-                  <span className="ml-2 text-forest-green-700">Air-purifying plants preferred</span>
-                </label>
+                    {/* Plant Suggestions */}
+                    {message.plants && message.plants.length > 0 && (
+                      <div className="mt-3 space-y-3">
+                        <h4 className="text-sm font-semibold text-forest-green-700">🌱 Plant Suggestions:</h4>
+                        {message.plants.map((plant, index) => (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                            className="bg-white border border-gray-200 rounded-lg p-3 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-start space-x-3">
+                              <div className="text-2xl">{getPlantIcon(plant.type)}</div>
+                              <div className="flex-1">
+                                <h5 className="font-semibold text-gray-800">{plant.name}</h5>
+                                <p className="text-xs text-gray-600 mb-2">{plant.description}</p>
+                                
+                                <div className="flex items-center space-x-4 text-xs text-gray-500">
+                                  <div className="flex items-center space-x-1">
+                                    {getSunlightIcon(plant.sunlight || 'partial')}
+                                    <span>{plant.sunlight || 'Partial'} sun</span>
+                                  </div>
+                                  <div className="flex items-center space-x-1">
+                                    {getMaintenanceIcon(plant.maintenance || 'low')}
+                                    <span>{plant.maintenance || 'Low'} care</span>
+                                  </div>
+                                  <div className="flex items-center space-x-1">
+                                    <FaSeedling className="text-green-500" />
+                                    <span>{plant.growTime}</span>
               </div>
             </div>
-          )}
-        </motion.div>
-
-        {/* Recommended Plants (Live) */}
-        <div className="mt-10">
-          <h3 className="text-xl font-semibold text-forest-green-800 mb-4">Recommended Plants</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {recommendedPlants.map((plant, index) => (
-              <div key={`${plant.id}-live-${index}`} className="bg-white rounded-xl shadow p-5">
-                {/* Name */}
-                <h4 className="text-lg font-bold text-forest-green-800 mb-3 leading-snug break-words">{plant.name}</h4>
-                {/* Type (Blue) */}
-                <div className="mb-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
-                  <div className="text-xs text-blue-700">Type</div>
-                  <div className="text-blue-900 font-semibold">{plant.category}</div>
-                </div>
-                {/* Sunlight (Yellow) */}
-                <div className="mb-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
-                  <div className="text-xs text-yellow-700">Sunlight</div>
-                  <div className="text-yellow-900 font-semibold">{plant.sunlight}</div>
-                </div>
-                {/* Add to my garden */}
-                <div className="flex justify-end">
+                                
+                                <div className="mt-2">
                   <button
                     onClick={() => {
+                                      // Add to user's garden
                       try {
                         const key = `my_garden_${user?.id || user?.uid || user?.email || 'guest'}`
                         const existing = JSON.parse(localStorage.getItem(key) || '[]')
                         if (!existing.includes(plant.name)) {
-                          const next = [...existing, plant.name]
-                          localStorage.setItem(key, JSON.stringify(next))
+                                          const updated = [...existing, plant.name]
+                                          localStorage.setItem(key, JSON.stringify(updated))
+                                          alert(`Added ${plant.name} to your garden! 🌱`)
+                                        } else {
+                                          alert(`${plant.name} is already in your garden!`)
                         }
                       } catch (e) {
                         console.error('Failed to save to garden', e)
                       }
                     }}
-                    className="px-3 py-2 bg-forest-green-500 text-cream-100 rounded-lg hover:bg-forest-green-600 text-sm"
+                                    className="px-3 py-1 bg-forest-green-500 text-white text-xs rounded-full hover:bg-forest-green-600 transition-colors"
                   >
-                    Add to my garden
+                                    Add to Garden
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
 
-        {/* Navigation */}
-        {currentStep > 0 && (
+                    {/* Store Items */}
+                    {message.storeItems && message.storeItems.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        <h4 className="text-sm font-semibold text-forest-green-700">🛒 Recommended Items:</h4>
+                        {message.storeItems.map((item, index) => (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                            className="bg-blue-50 border border-blue-200 rounded-lg p-3 cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-all duration-200"
+                            onClick={() => handleStoreItemClick(item)}
+                          >
+                            <div className="flex justify-between items-center">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <h6 className="text-sm font-medium text-blue-800">{item.name}</h6>
+                                  <FaShoppingCart className="w-3 h-3 text-blue-600" />
+                                </div>
+                                <p className="text-xs text-blue-600 mt-1">{item.description}</p>
+                                {item.category && (
+                                  <span className="inline-block text-xs bg-blue-200 text-blue-700 px-2 py-1 rounded-full mt-1">
+                                    {item.category}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-sm font-semibold text-blue-700 ml-2">{item.price}</span>
+                            </div>
+                            <div className="mt-2 text-xs text-blue-500 italic">
+                              Click to view in store →
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
+        </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {/* Typing Indicator */}
+            {isTyping && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center mt-6"
-          >
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex justify-start"
+              >
+                <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-3">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Restart Button */}
+          <div className="p-4 border-t border-gray-200">
             <button
-              onClick={() => setCurrentStep(currentStep - 1)}
-              className="text-forest-green-600 hover:text-forest-green-500 font-medium"
+              onClick={handleRestart}
+              className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-forest-green-100 hover:text-forest-green-700 transition-colors font-medium text-sm"
             >
-              ← Go Back
+              🔄 Start Over
             </button>
+          </div>
           </motion.div>
-        )}
       </div>
     </div>
   )

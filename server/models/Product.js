@@ -31,6 +31,10 @@ const productSchema = new mongoose.Schema({
     min: 0,
     default: 0
   },
+  inStock: {
+    type: Boolean,
+    default: true
+  },
   featured: {
     type: Boolean,
     default: false
@@ -44,6 +48,10 @@ const productSchema = new mongoose.Schema({
   reviews: {
     type: Number,
     default: 0
+  },
+  chatbotRecommended: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

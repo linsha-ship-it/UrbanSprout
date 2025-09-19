@@ -23,6 +23,17 @@ export const apiCall = async (endpoint, options = {}) => {
     const data = await response.json();
 
     if (!response.ok) {
+      // Handle authentication errors
+      if (response.status === 401) {
+        // Clear invalid token
+        localStorage.removeItem('urbansprout_token');
+        localStorage.removeItem('urbansprout_user');
+        
+        // Redirect to login if it's a user not found error
+        if (data.code === 'USER_NOT_FOUND') {
+          window.location.href = '/login';
+        }
+      }
       throw new Error(data.message || 'Something went wrong');
     }
 

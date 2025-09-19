@@ -64,13 +64,17 @@ export const initializeRazorpayPayment = (orderData, onSuccess, onError) => {
   }
 
   try {
+    console.log('Creating Razorpay instance with options:', options);
     const rzp = new window.Razorpay(options)
+    
     rzp.on('payment.failed', function (response) {
       console.error('Payment failed:', response.error);
       onError(`Payment failed: ${response.error.description || 'Unknown error'}`);
     });
     
+    console.log('Opening Razorpay modal...');
     rzp.open()
+    console.log('Razorpay modal opened successfully');
     
     return rzp
   } catch (error) {

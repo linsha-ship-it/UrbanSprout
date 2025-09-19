@@ -262,7 +262,7 @@ router.post('/', auth, async (req, res) => {
       author: req.user.name,
       authorEmail: req.user.email,
       authorId: req.user._id,
-      category: category || 'question',
+      category: category || null,
       tags: tags || [],
       likes: [],
       bookmarks: [],
@@ -502,14 +502,25 @@ router.post('/:id/share', async (req, res) => {
       })
     }
     
-    // Increment share count
-    blog.shares = (blog.shares || 0) + 1
+    // Increment share count by adding user to shares array
+    const existingShare = blog.shares.find(share => 
+      share.userEmail === req.user.email || share.userId.toString() === req.user._id.toString()
+    )
+    
+    if (!existingShare) {
+      blog.shares.push({
+        userEmail: req.user.email,
+        userId: req.user._id,
+        createdAt: new Date()
+      })
+    }
+    
     await blog.save()
     
     res.json({
       success: true,
       message: 'Post shared successfully',
-      shareCount: blog.shares
+      shareCount: blog.shares.length
     })
   } catch (error) {
     console.error('Error sharing blog post:', error)

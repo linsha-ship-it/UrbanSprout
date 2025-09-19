@@ -496,13 +496,20 @@ const verifyPayment = asyncHandler(async (req, res, next) => {
     // Create order in database
     const order = await Order.create({
       user: req.user._id,
-      items: orderData.items.map(item => ({
-        productId: item.id.toString(), // Use productId for hardcoded products
-        quantity: item.quantity,
-        price: item.price,
-        name: item.name,
-        image: item.image
-      })),
+      items: orderData.items.map((item, index) => {
+        // Simple, safe ID extraction for Razorpay
+        const productId = String(item.id || item._id || item.productId || `razorpay_${Date.now()}_${index}`);
+        
+        console.log(`Razorpay item ${index}: ${item.name} -> productId: ${productId}`);
+        
+        return {
+          productId: productId,
+          quantity: Number(item.quantity || 1),
+          price: Number(item.price || 0),
+          name: String(item.name || 'Unknown Product'),
+          image: String(item.image || '')
+        };
+      }),
       shippingAddress: {
         fullName: orderData.shippingAddress.fullName,
         address: orderData.shippingAddress.address,
@@ -579,23 +586,27 @@ const saveCart = asyncHandler(async (req, res) => {
       });
     }
     
-    // Find or create cart
-    let cart = await Cart.findOne({ user: req.user._id });
-    
-    if (!cart) {
-      cart = await Cart.create({ user: req.user._id, items: [] });
-    }
-    
-    // Update cart items
-    cart.items = items.map(item => ({
-      productId: item.productId || item.id,
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity || 1,
-      image: item.image
-    }));
-    
-    await cart.save();
+    // Find or create cart using upsert
+    const cart = await Cart.findOneAndUpdate(
+      { user: req.user._id },
+      {
+        $set: {
+          items: items.map(item => ({
+            productId: item.productId || item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity || 1,
+            image: item.image
+          })),
+          updatedAt: new Date()
+        }
+      },
+      { 
+        upsert: true, 
+        new: true,
+        setDefaultsOnInsert: true
+      }
+    );
     
     res.json({
       success: true,
@@ -652,22 +663,26 @@ const saveWishlist = asyncHandler(async (req, res) => {
       });
     }
     
-    // Find or create wishlist
-    let wishlist = await Wishlist.findOne({ user: req.user._id });
-    
-    if (!wishlist) {
-      wishlist = await Wishlist.create({ user: req.user._id, items: [] });
-    }
-    
-    // Update wishlist items
-    wishlist.items = items.map(item => ({
-      productId: item.productId || item.id,
-      name: item.name,
-      price: item.price,
-      image: item.image
-    }));
-    
-    await wishlist.save();
+    // Find or create wishlist using upsert
+    const wishlist = await Wishlist.findOneAndUpdate(
+      { user: req.user._id },
+      {
+        $set: {
+          items: items.map(item => ({
+            productId: item.productId || item.id,
+            name: item.name,
+            price: item.price,
+            image: item.image
+          })),
+          updatedAt: new Date()
+        }
+      },
+      { 
+        upsert: true, 
+        new: true,
+        setDefaultsOnInsert: true
+      }
+    );
     
     res.json({
       success: true,

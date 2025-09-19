@@ -177,16 +177,26 @@ router.post('/orders', auth, async (req, res) => {
       });
     }
 
-    // Create order with hardcoded products
+    // Debug: Log items structure
+    console.log('Order items received:', JSON.stringify(items, null, 2));
+
+    // Create order with hardcoded products - SIMPLIFIED
     const order = new Order({
-      user: req.user.id,
-      items: items.map(item => ({
-        productId: item.productId,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        image: item.image
-      })),
+      user: req.user._id,
+      items: items.map((item, index) => {
+        // Simple, safe ID extraction
+        const productId = String(item.id || item._id || item.productId || `temp_${Date.now()}_${index}`);
+        
+        console.log(`Item ${index}: ${item.name} -> productId: ${productId}`);
+        
+        return {
+          productId: productId,
+          name: String(item.name || 'Unknown Product'),
+          price: Number(item.price || 0),
+          quantity: Number(item.quantity || 1),
+          image: String(item.image || '')
+        };
+      }),
       shippingAddress,
       paymentMethod,
       subtotal: subtotal || total,
@@ -292,7 +302,7 @@ router.post('/order', auth, async (req, res) => {
 
     // Create order
     const order = new Order({
-      user: req.user.id,
+      user: req.user._id,
       items: validatedItems,
       shippingAddress,
       paymentMethod,

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react' 
 import { useAuth } from '../contexts/AuthContext'
 import { apiCall } from '../utils/api'
 import { 
@@ -350,7 +350,7 @@ const Blog = () => {
             avatar: null
           },
           timeAgo: formatTimeAgo(post.createdAt),
-          tag: post.category === 'success_story' ? 'Success Story' : 'Question',
+          tag: post.category === 'success_story' ? 'Success Story' : post.category === 'question' ? 'Question' : '',
           title: post.title || 'Untitled Post',
           content: post.content?.substring(0, 200) + '...' || 'No content available',
           image: post.image,
@@ -429,10 +429,10 @@ const Blog = () => {
     try {
       setLoading(true)
       const endpoint = activeFilter === 'My Posts'
-        ? '/blog/mine?sort=newest'
+        ? `/blog/mine?sort=newest&page=${currentPage}&limit=10`
         : activeFilter === 'Saved Posts'
-          ? '/blog/saved?sort=newest'
-          : '/blog?sort=newest'
+          ? `/blog/saved?sort=newest&page=${currentPage}&limit=10`
+          : `/blog?sort=newest&page=${currentPage}&limit=10`
 
       const response = await apiCall(endpoint)
       
@@ -446,7 +446,7 @@ const Blog = () => {
             avatar: null
           },
           timeAgo: formatTimeAgo(post.createdAt),
-          tag: post.category === 'success_story' ? 'Success Story' : 'Question',
+          tag: post.category === 'success_story' ? 'Success Story' : post.category === 'question' ? 'Question' : '',
           title: post.title || 'Untitled Post',
           content: post.content?.substring(0, 200) + '...' || 'No content available',
           image: post.image,
@@ -465,6 +465,11 @@ const Blog = () => {
           }))
         }))
         setPosts(transformedPosts)
+        
+        // Update pagination info if available
+        if (response.data.totalPages) {
+          setTotalPages(response.data.totalPages)
+        }
       }
     } catch (error) {
       console.error('Error loading posts:', error)
@@ -1077,8 +1082,63 @@ const Blog = () => {
           onClose={() => setShowCreatePost(false)} 
           user={user}
           onCreatePost={async () => {
-            await loadPosts()
+            // Reset to first page and reload posts
+            setCurrentPage(1)
+            // Force reload with page 1 to get latest posts
+            try {
+              setLoading(true)
+              const endpoint = activeFilter === 'My Posts'
+                ? '/blog/mine?sort=newest&page=1&limit=10'
+                : activeFilter === 'Saved Posts'
+                  ? '/blog/saved?sort=newest&page=1&limit=10'
+                  : '/blog?sort=newest&page=1&limit=10'
+
+              const response = await apiCall(endpoint)
+              
+              if (response.success && response.data) {
+                const backendPosts = Array.isArray(response.data) ? response.data : response.data.posts || []
+                const transformedPosts = backendPosts.map(post => ({
+                  id: post._id || post.id,
+                  user: {
+                    name: post.author || 'Anonymous',
+                    username: `@${(post.author || 'user').toLowerCase().replace(' ', '_')}`,
+                    avatar: null
+                  },
+                  timeAgo: formatTimeAgo(post.createdAt),
+                  tag: post.category === 'success_story' ? 'Success Story' : post.category === 'question' ? 'Question' : '',
+                  title: post.title || 'Untitled Post',
+                  content: post.content?.substring(0, 200) + '...' || 'No content available',
+                  image: post.image,
+                  hashtags: post.tags?.map(tag => `#${tag}`) || ['#PlantCare'],
+                  likes: post.likeCount || (post.likes?.length || 0),
+                  comments: post.commentCount || (post.comments?.length || 0),
+                  shares: post.shareCount || (Array.isArray(post.shares) ? post.shares.length : (post.shares || 0)),
+                  bookmarks: post.bookmarkCount || (post.bookmarks?.length || 0),
+                  liked: user ? post.likes?.some(like => like.userEmail === user.email) || false : false,
+                  bookmarked: user ? post.bookmarks?.some(bookmark => bookmark.userEmail === user.email) || false : false,
+                  commentsList: (post.comments || []).map(c => ({
+                    id: c._id || `${post._id || post.id}-${c.createdAt}`,
+                    user: { name: c.author || 'Anonymous', avatar: null },
+                    content: c.content,
+                    timeAgo: formatTimeAgo(c.createdAt)
+                  }))
+                }))
+                setPosts(transformedPosts)
+                
+                // Update pagination info if available
+                if (response.data.totalPages) {
+                  setTotalPages(response.data.totalPages)
+                }
+              }
+            } catch (error) {
+              console.error('Error loading posts after creation:', error)
+            } finally {
+              setLoading(false)
+            }
+            
             setShowCreatePost(false)
+            // Show success message
+            alert('🎉 Post published successfully! Your post is now visible at the top of the blog.')
           }}
         />
       )}
@@ -1125,7 +1185,20 @@ const CreatePostModal = ({ onClose, user, onCreatePost }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!postData.title.trim() || !postData.content.trim() || !postData.tag.trim()) return
+    
+    // Debug logging
+    console.log('Form submission data:', postData)
+    console.log('Validation check:', {
+      title: postData.title.trim(),
+      content: postData.content.trim(),
+      tag: postData.tag.trim() || 'empty',
+      user: !!user
+    })
+    
+    if (!postData.title.trim() || !postData.content.trim()) {
+      alert('Please fill in the required fields: Title and Content')
+      return
+    }
 
     if (!user) {
       alert('Please log in to create a post.')
@@ -1134,22 +1207,34 @@ const CreatePostModal = ({ onClose, user, onCreatePost }) => {
 
     setLoading(true)
     try {
+      const requestData = {
+        title: postData.title.trim(),
+        content: postData.content.trim(),
+        category: postData.tag ? postData.tag.toLowerCase().replace(' ', '_') : null, // Leave empty if not selected
+        tags: postData.hashtags ? postData.hashtags.split(' ').filter(tag => tag.startsWith('#')).map(tag => tag.slice(1)) : [],
+        image: postData.image
+      }
+      
+      console.log('Sending request data:', requestData)
+      console.log('User token:', localStorage.getItem('urbansprout_token'))
+      
       const response = await apiCall('/blog', {
         method: 'POST',
-        body: JSON.stringify({
-          title: postData.title.trim(),
-          content: postData.content.trim(),
-          category: postData.tag ? postData.tag.toLowerCase().replace(' ', '_') : null,
-          tags: postData.hashtags ? postData.hashtags.split(' ').filter(tag => tag.startsWith('#')).map(tag => tag.slice(1)) : [],
-          image: postData.image
-        })
+        body: JSON.stringify(requestData)
       })
+      
+      console.log('API response:', response)
 
       if (response.success) {
-        onCreatePost()
-        // Update counts after creating post
-        loadUserCounts()
-        loadCommunityStats()
+        // Small delay to ensure database is updated
+        setTimeout(() => {
+          onCreatePost()
+          // Update counts after creating post
+          loadUserCounts()
+          loadCommunityStats()
+        }, 500)
+      } else {
+        alert(`Failed to create post: ${response.message || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error creating post:', error)
@@ -1173,26 +1258,34 @@ const CreatePostModal = ({ onClose, user, onCreatePost }) => {
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={(e) => {
+            console.log('Form submitted')
+            handleSubmit(e)
+          }} className="space-y-6">
             {/* Post Type */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Post Type *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Post Type (Optional)</label>
               <div className="flex gap-2">
                 {['Question', 'Success Story'].map((type) => (
                   <button
                     key={type}
                     type="button"
-                    onClick={() => setPostData(prev => ({ ...prev, tag: type }))}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    onClick={() => {
+                      console.log('Selecting post type:', type)
+                      setPostData(prev => ({ ...prev, tag: type }))
+                    }}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border-2 ${
                       postData.tag === type
-                        ? type === 'Question' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
-                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        ? type === 'Question' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-green-100 text-green-700 border-green-300'
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border-gray-200'
                     }`}
                   >
                     {type}
+                    {postData.tag === type && ' ✓'}
                   </button>
                 ))}
               </div>
+              <p className="text-gray-500 text-sm mt-1">Post type will be left empty if not selected</p>
             </div>
 
             {/* Title */}
@@ -1283,6 +1376,16 @@ const CreatePostModal = ({ onClose, user, onCreatePost }) => {
               <button
                 type="submit"
                 disabled={loading}
+                onClick={(e) => {
+                  console.log('Publish button clicked')
+                  console.log('Current postData:', postData)
+                  console.log('Loading state:', loading)
+                  console.log('Validation status:', {
+                    title: !!postData.title.trim(),
+                    content: !!postData.content.trim(),
+                    tag: postData.tag.trim() || 'empty'
+                  })
+                }}
                 className="flex-1 px-6 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
               >
                 {loading ? (

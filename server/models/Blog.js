@@ -55,7 +55,7 @@ const blogSchema = new mongoose.Schema({
   category: {
     type: String,
     enum: ['question', 'success_story'],
-    default: 'question'
+    required: false
   },
   tags: [{
     type: String,

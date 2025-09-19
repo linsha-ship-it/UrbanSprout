@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FaGoogle, FaEye, FaEyeSlash, FaLeaf } from 'react-icons/fa';
-import { signInWithGoogle } from '../../config/firebase';
+import { signInWithGoogle, getGoogleRedirectResult } from '../../config/firebase';
 import { authAPI } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { validateEmail } from '../../utils/validation';
@@ -19,6 +19,64 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
+
+  // Handle redirect result from Google Sign-In
+  useEffect(() => {
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getGoogleRedirectResult();
+        if (result && result.user) {
+          console.log('Google redirect result received:', result.user.email);
+          await processGoogleUser(result.user);
+        }
+      } catch (error) {
+        console.error('Error handling redirect result:', error);
+        setError('Google Sign-In failed. Please try again.');
+      }
+    };
+
+    handleRedirectResult();
+  }, []);
+
+  // Process Google user authentication
+  const processGoogleUser = async (user) => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      // Get Firebase ID token
+      const idToken = await user.getIdToken();
+      console.log('Processing Google user:', user.email);
+
+      const response = await authAPI.firebaseAuth({
+        idToken,
+        email: user.email, // Add email as fallback
+        role: 'beginner',
+        name: user.displayName || 'User'
+      });
+      
+      if (response.success) {
+        // Support both direct and data-wrapped responses
+        const token = response.token || response.data?.token;
+        const userData = response.user || response.data?.user;
+        
+        if (token && userData) {
+          console.log('Google sign-in successful:', userData.email);
+          login(userData, token);
+          navigate('/dashboard');
+        } else {
+          throw new Error('Invalid response format from server');
+        }
+      } else {
+        throw new Error(response.message || 'Authentication failed');
+      }
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      setError(error.message || 'Google Sign-In failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -92,43 +150,25 @@ const Login = () => {
     setError('');
     
     try {
+      console.log('Initiating Google Sign-In...');
       const result = await signInWithGoogle();
-      const user = result.user;
-
-      // Get Firebase ID token and send to backend for verification
-      const idToken = await user.getIdToken();
-
-      const response = await authAPI.firebaseAuth({
-        idToken,
-        role: 'beginner',
-        name: user.displayName || 'User'
-      });
       
-      if (response.success) {
-        // Support both direct and data-wrapped responses
-        const token = response.token || response.data?.token;
-        const userObj = response.user || response.data?.user;
-        login(userObj, token);
-        
-        // Redirect based on user role
-        const userRole = response.data.user.role;
-        switch (userRole) {
-          case 'admin':
-            navigate('/admin/dashboard');
-            break;
-          case 'vendor':
-            navigate('/vendor/dashboard');
-            break;
-          case 'expert':
-            navigate('/expert/dashboard');
-            break;
-          default:
-            navigate('/dashboard');
-        }
+      // If result is null, it means redirect method was used
+      if (result === null) {
+        console.log('Redirect method used, waiting for page reload...');
+        return; // The page will redirect and reload
+      }
+      
+      // If we get here, popup method succeeded
+      if (result && result.user) {
+        console.log('Popup method successful:', result.user.email);
+        await processGoogleUser(result.user);
+      } else {
+        throw new Error('No user data received from Google');
       }
     } catch (error) {
-      setError(error.message || 'Google sign-in failed. Please try again.');
-    } finally {
+      console.error('Google sign-in error:', error);
+      setError(error.message || 'Google Sign-In failed. Please try again.');
       setLoading(false);
     }
   };

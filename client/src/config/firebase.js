@@ -1,6 +1,6 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -24,8 +24,32 @@ googleProvider.setCustomParameters({
   prompt: 'select_account'
 });
 
-// Google Sign In helper
-export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
+// Google Sign In helper with fallback
+export const signInWithGoogle = async () => {
+  try {
+    // Try popup first
+    return await signInWithPopup(auth, googleProvider);
+  } catch (error) {
+    console.log('Popup failed, trying redirect method:', error.message);
+    
+    // If popup fails due to COOP or other issues, use redirect
+    if (error.code === 'auth/popup-blocked' || 
+        error.code === 'auth/popup-closed-by-user' ||
+        error.message.includes('Cross-Origin-Opener-Policy')) {
+      
+      // Use redirect method instead
+      await signInWithRedirect(auth, googleProvider);
+      // The page will redirect, so this won't return
+      return null;
+    }
+    
+    // Re-throw other errors
+    throw error;
+  }
+};
+
+// Helper to get redirect result
+export const getGoogleRedirectResult = () => getRedirectResult(auth);
 
 // Sign Out helper
 export const signOutUser = () => signOut(auth);

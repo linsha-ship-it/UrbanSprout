@@ -18,7 +18,8 @@ const auth = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Token is not valid.'
+        message: 'User not found. Please log in again.',
+        code: 'USER_NOT_FOUND'
       });
     }
 
