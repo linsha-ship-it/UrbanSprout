@@ -371,7 +371,6 @@ async function getStoreRecommendations(space, maintenance) {
     return recommendedProducts.map(product => ({
       id: product._id.toString(),
       name: product.name,
-      price: `$${product.price}`,
       description: product.description,
       category: product.category,
       image: product.image
@@ -380,8 +379,8 @@ async function getStoreRecommendations(space, maintenance) {
     console.error('Error fetching store recommendations:', error);
     // Fallback to generic recommendations
     return [
-      { name: "Small Ceramic Pots", price: "$8-15", description: "Perfect for herbs and small vegetables", category: "container" },
-      { name: "Hand Trowel", price: "$10-20", description: "Essential for planting and transplanting", category: "tool" }
+      { name: "Small Ceramic Pots", description: "Perfect for herbs and small vegetables", category: "container" },
+      { name: "Hand Trowel", description: "Essential for planting and transplanting", category: "tool" }
     ];
   }
 }

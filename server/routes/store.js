@@ -26,27 +26,44 @@ router.get('/', async (req, res) => {
       limit = 12
     } = req.query;
 
-    // Build filter object
-    const filter = {};
+    // Build filter object - only show published, non-archived products
+    const filter = {
+      published: true,
+      archived: false
+    };
     
     if (category && category !== 'all') {
       filter.category = category;
     }
     
     if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = parseFloat(minPrice);
-      if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
+      filter.$or = [
+        { regularPrice: {} },
+        { discountPrice: {} }
+      ];
+      
+      if (minPrice) {
+        filter.$or[0].regularPrice.$gte = parseFloat(minPrice);
+        filter.$or[1].discountPrice.$gte = parseFloat(minPrice);
+      }
+      if (maxPrice) {
+        filter.$or[0].regularPrice.$lte = parseFloat(maxPrice);
+        filter.$or[1].discountPrice.$lte = parseFloat(maxPrice);
+      }
     }
     
     if (search) {
-      filter.$text = { $search: search };
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { tags: { $in: [new RegExp(search, 'i')] } }
+      ];
     }
 
     // Build sort object
     const sortObj = {};
     if (sort === 'price') {
-      sortObj.price = order === 'desc' ? -1 : 1;
+      sortObj.regularPrice = order === 'desc' ? -1 : 1;
     } else if (sort === 'name') {
       sortObj.name = order === 'desc' ? -1 : 1;
     } else if (sort === 'rating') {
@@ -72,10 +89,11 @@ router.get('/', async (req, res) => {
     
     // Get price range
     const priceRange = await Product.aggregate([
+      { $match: { published: true, archived: false } },
       { $group: { 
         _id: null, 
-        minPrice: { $min: '$price' }, 
-        maxPrice: { $max: '$price' } 
+        minPrice: { $min: '$regularPrice' }, 
+        maxPrice: { $max: '$regularPrice' } 
       }}
     ]);
 
@@ -296,7 +314,7 @@ router.post('/order', auth, async (req, res) => {
     }
 
     // Calculate shipping and tax (dummy values)
-    const shipping = subtotal > 50 ? 0 : 10; // Free shipping over $50
+    const shipping = subtotal > 50 ? 0 : 10; // Free shipping over ₹50
     const tax = subtotal * 0.08; // 8% tax
     const total = subtotal + shipping + tax;
 

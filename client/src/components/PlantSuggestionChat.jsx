@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Leaf, Sun, Clock, Home, Zap, Salad, Smoothie } from 'lucide-react';
+import { Send, Bot, User, Leaf, Sun, Clock, Home, Zap, Salad, Coffee } from 'lucide-react';
 
 const PlantSuggestionChat = () => {
   const [messages, setMessages] = useState([]);
@@ -47,7 +47,7 @@ const PlantSuggestionChat = () => {
     { text: "I want quick results", keyword: "quick_growing", icon: <Zap className="w-4 h-4" /> },
     { text: "I have time to wait", keyword: "slow_growing", icon: <Clock className="w-4 h-4" /> },
     { text: "For fresh salads", keyword: "salad_plants", icon: <Salad className="w-4 h-4" /> },
-    { text: "For smoothies", keyword: "smoothie_plants", icon: <Smoothie className="w-4 h-4" /> }
+    { text: "For smoothies", keyword: "smoothie_plants", icon: <Coffee className="w-4 h-4" /> }
   ];
 
   const getPlantRecommendations = async (keyword, preferences = {}) => {

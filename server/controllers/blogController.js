@@ -10,8 +10,11 @@ const getAllPosts = asyncHandler(async (req, res) => {
   const { category, tag, search, status = 'published' } = req.query;
   const { page, limit, skip } = req.pagination;
 
-  // Build query
-  let query = { status };
+  // Build query - only show approved posts for public
+  let query = { 
+    status: 'published',
+    approvalStatus: 'approved'
+  };
 
   if (category) {
     query.category = category.toLowerCase();
@@ -32,7 +35,7 @@ const getAllPosts = asyncHandler(async (req, res) => {
   // Get posts with pagination
   const posts = await Blog.find(query)
     .populate('author', 'name email avatar')
-    .sort({ isFeatured: -1, publishedAt: -1 })
+    .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
     .lean();
@@ -408,6 +411,92 @@ const getFeaturedPosts = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Approve blog post
+// @route   PUT /api/blog/:id/approve
+// @access  Private (Admin only)
+const approvePost = asyncHandler(async (req, res, next) => {
+  const post = await Blog.findById(req.params.id);
+
+  if (!post) {
+    return next(new AppError('Blog post not found', 404));
+  }
+
+  post.approvalStatus = 'approved';
+  post.status = 'published';
+  post.approvedBy = req.user._id;
+  post.approvedAt = new Date();
+  post.rejectionReason = undefined; // Clear any previous rejection reason
+
+  await post.save();
+
+  res.json({
+    success: true,
+    message: 'Blog post approved successfully',
+    data: { post }
+  });
+});
+
+// @desc    Reject blog post
+// @route   PUT /api/blog/:id/reject
+// @access  Private (Admin only)
+const rejectPost = asyncHandler(async (req, res, next) => {
+  const { reason } = req.body;
+
+  if (!reason || reason.trim().length === 0) {
+    return next(new AppError('Rejection reason is required', 400));
+  }
+
+  const post = await Blog.findById(req.params.id);
+
+  if (!post) {
+    return next(new AppError('Blog post not found', 404));
+  }
+
+  post.approvalStatus = 'rejected';
+  post.status = 'rejected';
+  post.rejectionReason = reason.trim();
+  post.rejectedBy = req.user._id;
+  post.rejectedAt = new Date();
+
+  await post.save();
+
+  res.json({
+    success: true,
+    message: 'Blog post rejected successfully',
+    data: { post }
+  });
+});
+
+// @desc    Get user's blog posts with approval status
+// @route   GET /api/blog/my-posts
+// @access  Private
+const getMyPosts = asyncHandler(async (req, res) => {
+  const { page, limit, skip } = req.pagination;
+
+  const posts = await Blog.find({ authorId: req.user._id })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  const total = await Blog.countDocuments({ authorId: req.user._id });
+
+  res.json({
+    success: true,
+    data: {
+      posts,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      }
+    }
+  });
+});
+
 module.exports = {
   getAllPosts,
   getPost,
@@ -421,5 +510,8 @@ module.exports = {
   addComment,
   replyToComment,
   getCategories,
-  getFeaturedPosts
+  getFeaturedPosts,
+  approvePost,
+  rejectPost,
+  getMyPosts
 };

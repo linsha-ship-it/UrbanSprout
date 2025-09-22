@@ -65,7 +65,7 @@ server/
 2. **Environment Variables**
    Create a `.env` file with:
    ```env
-   MONGODB_URI=mongodb+srv://urbansproutAdmin:helloUrbansproutAdmin#123@urbansprout-cluster.cbjm4a6.mongodb.net/?retryWrites=true&w=majority&appName=UrbanSprout-cluster
+   MONGODB_URI=mongodb+srv://urbansproutAdmin:helloUrbansproutAdmin%23123@urbansprout-cluster.cbjm4a6.mongodb.net/?retryWrites=true&w=majority&appName=UrbanSprout-cluster
    PORT=5000
    NODE_ENV=development
    JWT_SECRET=urbansprout_jwt_secret_key_2024_secure_token

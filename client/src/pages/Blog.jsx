@@ -230,44 +230,10 @@ const Blog = () => {
     totalMembers: 0,
     activeToday: 0
   })
+  const [topContributors, setTopContributors] = useState([])
   
-  // Initialize with sample data to prevent blank page
-  const [posts, setPosts] = useState([
-    {
-      id: 1,
-      user: { name: 'Sarah Chen', username: '@plantmom_sarah', avatar: null },
-      timeAgo: '2h',
-      tag: 'Question',
-      title: 'Help! My basil leaves are turning yellow 🌿',
-      content: 'I\'ve been growing basil for 3 months and recently noticed the lower leaves turning yellow. I water it every other day and it gets morning sun. Has anyone experienced this?',
-      image: 'https://images.unsplash.com/photo-1618164436241-4473940d1f5c?w=500&h=300&fit=crop',
-      hashtags: ['#HerbGarden', '#PestControl', '#BasilCare', '#PlantHelp'],
-      likes: 34,
-      comments: 12,
-      shares: 5,
-      bookmarks: 18,
-      liked: false,
-      bookmarked: false,
-      commentsList: []
-    },
-    {
-      id: 2,
-      user: { name: 'Mike Rodriguez', username: '@urban_gardener', avatar: null },
-      timeAgo: '4h',
-      tag: 'Success Story',
-      title: 'My first tomato harvest from balcony garden! 🍅',
-      content: 'After 4 months of careful tending, my cherry tomatoes are finally ready for harvest! Started from seeds in my small balcony setup.',
-      image: 'https://images.unsplash.com/photo-1592841200221-21e1c4e8e8c4?w=500&h=300&fit=crop',
-      hashtags: ['#TomatoGarden', '#SuccessStory', '#BalconyGarden', '#FromSeed'],
-      likes: 127,
-      comments: 28,
-      shares: 19,
-      bookmarks: 45,
-      liked: true,
-      bookmarked: true,
-      commentsList: []
-    }
-  ])
+  // Initialize with empty array - posts will be loaded from API
+  const [posts, setPosts] = useState([])
 
   // Load posts from backend
   useEffect(() => {
@@ -280,6 +246,9 @@ const Blog = () => {
       loadUserCounts()
       loadCommunityStats()
     }
+    // Always load community stats and top contributors for public display
+    loadCommunityStats()
+    loadTopContributors()
   }, [user, posts])
 
   // Quick Tips slideshow effect
@@ -302,10 +271,12 @@ const Blog = () => {
     } else if (activeFilter === 'Success Stories') {
       return posts.filter(post => post.tag === 'Success Story')
     } else if (activeFilter === 'My Posts') {
-      // Filter posts created by the current user
-      return posts.filter(post => user && post.user.name === (user.name || user.displayName))
+      // Filter posts created by the current user (only if user is authenticated)
+      if (!user) return posts // Fallback to all posts for non-authenticated users
+      return posts.filter(post => post.user.name === (user.name || user.displayName))
     } else if (activeFilter === 'Saved Posts') {
-      // Filter posts that the current user has bookmarked
+      // Filter posts that the current user has bookmarked (only if user is authenticated)
+      if (!user) return posts // Fallback to all posts for non-authenticated users
       return posts.filter(post => post.bookmarked === true)
     }
     return posts
@@ -428,11 +399,14 @@ const Blog = () => {
   const loadPosts = async () => {
     try {
       setLoading(true)
-      const endpoint = activeFilter === 'My Posts'
-        ? `/blog/mine?sort=newest&page=${currentPage}&limit=10`
-        : activeFilter === 'Saved Posts'
-          ? `/blog/saved?sort=newest&page=${currentPage}&limit=10`
-          : `/blog?sort=newest&page=${currentPage}&limit=10`
+      // For non-authenticated users, only allow public endpoints
+      const endpoint = !user 
+        ? `/blog?sort=newest&page=${currentPage}&limit=10`
+        : activeFilter === 'My Posts'
+          ? `/blog/mine?sort=newest&page=${currentPage}&limit=10`
+          : activeFilter === 'Saved Posts'
+            ? `/blog/saved?sort=newest&page=${currentPage}&limit=10`
+            : `/blog?sort=newest&page=${currentPage}&limit=10`
 
       const response = await apiCall(endpoint)
       
@@ -533,6 +507,19 @@ const Blog = () => {
     }
   }
 
+  // Load top contributors
+  const loadTopContributors = async () => {
+    try {
+      const response = await apiCall('/blog/top-contributors?limit=4')
+      if (response.success && response.data) {
+        setTopContributors(response.data)
+      }
+    } catch (error) {
+      console.error('Error loading top contributors:', error)
+      // Keep empty array if API fails
+    }
+  }
+
   // Blog community stats - now using dynamic data
   const blogStats = communityStats
 
@@ -545,12 +532,6 @@ const Blog = () => {
     { tag: '#PlantScience', count: 123, trend: 'up' }
   ]
 
-  const topContributors = [
-    { name: 'Dr. PlantExpert', points: 3247, rank: 1, avatar: null },
-    { name: 'GreenThumb_Pro', points: 2834, rank: 2, avatar: null },
-    { name: 'PlantMom_Sarah', points: 2456, rank: 3, avatar: null },
-    { name: 'UrbanGardener_Mike', points: 2187, rank: 4, avatar: null }
-  ]
 
   const quickTips = [
     "📚 Read plant care guides before buying new plants",
@@ -559,16 +540,25 @@ const Blog = () => {
     "🔍 Research before repotting - timing matters"
   ]
 
-  const sidebarItems = [
-    { name: 'My Feed', icon: FaUsers, active: true, count: null },
-    { name: 'My Posts', icon: FaFileAlt, active: false, count: myPostsCount },
-    { name: 'Saved Posts', icon: FaBookmark, active: false, count: savedPostsCount },
-    { name: 'Questions', icon: FaQuestionCircle, active: false, count: null },
-    { name: 'Success Story', icon: FaStar, active: false, count: null },
-    { name: 'Trending', icon: FaFire, active: false, count: null }
-  ]
+  const sidebarItems = user 
+    ? [
+        { name: 'My Feed', icon: FaUsers, active: true, count: null },
+        { name: 'My Posts', icon: FaFileAlt, active: false, count: myPostsCount },
+        { name: 'Saved Posts', icon: FaBookmark, active: false, count: savedPostsCount },
+        { name: 'Questions', icon: FaQuestionCircle, active: false, count: null },
+        { name: 'Success Story', icon: FaStar, active: false, count: null },
+        { name: 'Trending', icon: FaFire, active: false, count: null }
+      ]
+    : [
+        { name: 'All Posts', icon: FaUsers, active: true, count: null },
+        { name: 'Questions', icon: FaQuestionCircle, active: false, count: null },
+        { name: 'Success Story', icon: FaStar, active: false, count: null },
+        { name: 'Trending', icon: FaFire, active: false, count: null }
+      ]
 
-  const filters = ['All Posts', 'My Posts', 'Saved Posts', 'Questions', 'Success Stories']
+  const filters = user 
+    ? ['All Posts', 'My Posts', 'Saved Posts', 'Questions', 'Success Stories']
+    : ['All Posts', 'Questions', 'Success Stories']
 
   const handleLike = (postId) => {
     setPosts(posts.map(post => 
@@ -723,6 +713,7 @@ const Blog = () => {
         await loadPosts()
         // Update counts
         loadUserCounts()
+        loadTopContributors()
         setMessage('Post updated successfully!')
         setTimeout(() => setMessage(''), 3000)
       }
@@ -748,6 +739,7 @@ const Blog = () => {
         setPosts(posts.filter(post => post.id !== postId))
         // Update counts
         loadUserCounts()
+        loadTopContributors()
         setMessage('Post deleted successfully!')
         setTimeout(() => setMessage(''), 3000)
       }
@@ -806,6 +798,43 @@ const Blog = () => {
           </div>
         </div>
       </div>
+
+      {/* Read-only banner for unauthenticated users */}
+      {!user && (
+        <div className="w-full px-6 sm:px-8 lg:px-12 xl:px-16 py-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="flex-shrink-0">
+                  <FaUsers className="h-6 w-6 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-blue-800">
+                    You're viewing the blog in read-only mode
+                  </h3>
+                  <p className="text-sm text-blue-600">
+                    Sign up to create posts, comment, like, and join our gardening community!
+                  </p>
+                </div>
+              </div>
+              <div className="flex space-x-2">
+                <a
+                  href="/signup"
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Sign Up
+                </a>
+                <a
+                  href="/login"
+                  className="px-4 py-2 border border-blue-600 text-blue-600 text-sm rounded-lg hover:bg-blue-50 transition-colors"
+                >
+                  Login
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="w-full px-6 sm:px-8 lg:px-12 xl:px-16 py-6">
         <div className="grid grid-cols-1 md:grid-cols-12 lg:grid-cols-12 xl:grid-cols-10 gap-4 md:gap-6">
@@ -921,7 +950,7 @@ const Blog = () => {
                 <div className="flex justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
                 </div>
-              ) : (
+              ) : filteredAndSortedPosts.length > 0 ? (
                 filteredAndSortedPosts.map((post) => (
                   <PostCard 
                     key={post.id} 
@@ -939,6 +968,44 @@ const Blog = () => {
                     setEditingPost={setEditingPost}
                   />
                 ))
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 mb-4">
+                    <svg className="mx-auto h-16 w-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No posts yet</h3>
+                  <p className="text-gray-500 mb-6">
+                    {user 
+                      ? "Be the first to share your gardening experience with the community!" 
+                      : "Sign up to create the first post and start the conversation!"
+                    }
+                  </p>
+                  {user ? (
+                    <button
+                      onClick={() => setShowCreatePost(true)}
+                      className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+                    >
+                      Create First Post
+                    </button>
+                  ) : (
+                    <div className="flex justify-center space-x-3">
+                      <a
+                        href="/signup"
+                        className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+                      >
+                        Sign Up
+                      </a>
+                      <a
+                        href="/login"
+                        className="px-6 py-3 border border-green-500 text-green-500 rounded-lg hover:bg-green-50 transition-colors font-medium"
+                      >
+                        Login
+                      </a>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             
@@ -1017,18 +1084,28 @@ const Blog = () => {
                   Top Contributors
                 </h3>
                 <div className="space-y-3">
-                  {topContributors.map((contributor, index) => (
-                    <div key={index} className="flex items-center space-x-3">
-                      <span className="text-sm font-bold text-gray-600 w-4">
-                        {contributor.rank}.
-                      </span>
-                      <Avatar user={{ name: contributor.name }} size="sm" />
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900 text-sm">{contributor.name}</div>
-                        <div className="text-xs text-gray-500">{contributor.points.toLocaleString()} points</div>
+                  {topContributors.length > 0 ? (
+                    topContributors.map((contributor, index) => (
+                      <div key={index} className="flex items-center space-x-3">
+                        <span className={`text-sm font-bold w-4 ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-amber-600' : 'text-gray-600'}`}>
+                          {index + 1}.
+                        </span>
+                        <Avatar user={{ name: contributor.name }} size="sm" />
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900 text-sm">{contributor.name}</div>
+                          <div className="text-xs text-gray-500">{contributor.postCount} posts</div>
+                        </div>
+                        {index === 0 && <FaTrophy className="text-yellow-500 text-xs" />}
+                        {index === 1 && <div className="w-3 h-3 rounded-full bg-gray-400"></div>}
+                        {index === 2 && <div className="w-3 h-3 rounded-full bg-amber-600"></div>}
                       </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-4">
+                      <div className="text-gray-500 text-sm">No contributors yet</div>
+                      <div className="text-gray-400 text-xs">Be the first to create a post!</div>
                     </div>
-                  ))}
+                  )}
                 </div>
                   </div>
 
@@ -1229,9 +1306,10 @@ const CreatePostModal = ({ onClose, user, onCreatePost }) => {
         // Small delay to ensure database is updated
         setTimeout(() => {
           onCreatePost()
-          // Update counts after creating post
-          loadUserCounts()
-          loadCommunityStats()
+            // Update counts after creating post
+            loadUserCounts()
+            loadCommunityStats()
+            loadTopContributors()
         }, 500)
       } else {
         alert(`Failed to create post: ${response.message || 'Unknown error'}`)

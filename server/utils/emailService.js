@@ -1,0 +1,855 @@
+const nodemailer = require('nodemailer');
+
+// Create email transporter
+const createTransporter = () => {
+  // For development, we'll use Gmail SMTP
+  // In production, you should use a proper email service like SendGrid, AWS SES, etc.
+  
+  const emailUser = process.env.EMAIL_USER || 'your-email@gmail.com';
+  const emailPass = process.env.EMAIL_PASS || 'your-app-password';
+  
+  // Remove any spaces from the app password (common issue)
+  const cleanEmailPass = emailPass.replace(/\s+/g, '');
+  
+  console.log('Email configuration:', {
+    user: emailUser,
+    passLength: cleanEmailPass.length,
+    passStartsWith: cleanEmailPass.substring(0, 4) + '...'
+  });
+  
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: emailUser,
+      pass: cleanEmailPass
+    },
+    // Add additional options for better error handling
+    pool: true,
+    maxConnections: 1,
+    rateDelta: 20000,
+    rateLimit: 5
+  });
+};
+
+// Send password reset email
+const sendPasswordResetEmail = async (email, resetUrl, userName = 'User') => {
+  try {
+    const transporter = createTransporter();
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #10B981, #059669); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .warning { background: #FEF3C7; border: 1px solid #F59E0B; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🌱 UrbanSprout</h1>
+            <h2>Password Reset Request</h2>
+          </div>
+          
+          <div class="content">
+            <h3>Hello ${userName}!</h3>
+            
+            <p>We received a request to reset your password for your UrbanSprout account.</p>
+            
+            <p>Click the button below to reset your password:</p>
+            
+            <div style="text-align: center;">
+              <a href="${resetUrl}" class="button">Reset My Password</a>
+            </div>
+            
+            <div class="warning">
+              <strong>⚠️ Security Notice:</strong>
+              <ul>
+                <li>This link will expire in 10 minutes for security</li>
+                <li>If you didn't request this reset, please ignore this email</li>
+                <li>Never share this link with anyone</li>
+              </ul>
+            </div>
+            
+            <p>If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; background: #e5e7eb; padding: 10px; border-radius: 5px; font-size: 12px;">
+              ${resetUrl}
+            </p>
+            
+            <p>If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
+            
+            <p>Happy gardening!<br>
+            The UrbanSprout Team 🌿</p>
+          </div>
+          
+          <div class="footer">
+            <p>This email was sent from UrbanSprout - Urban Gardening Made Easy</p>
+            <p>© 2025 UrbanSprout. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"UrbanSprout" <${process.env.EMAIL_USER || 'noreply@urbansprout.com'}>`,
+      to: email,
+      subject: '🔐 Password Reset Request - UrbanSprout',
+      html: htmlContent,
+      text: `
+        Hello ${userName}!
+        
+        We received a request to reset your password for your UrbanSprout account.
+        
+        Click this link to reset your password: ${resetUrl}
+        
+        This link will expire in 10 minutes for security.
+        
+        If you didn't request this reset, please ignore this email.
+        
+        Happy gardening!
+        The UrbanSprout Team
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Password reset email sent:', info.messageId);
+    
+    return {
+      success: true,
+      messageId: info.messageId
+    };
+
+  } catch (error) {
+    console.error('Error sending password reset email:', error);
+    
+    // Provide specific error messages for common issues
+    let errorMessage = error.message;
+    if (error.code === 'EAUTH') {
+      errorMessage = 'Gmail authentication failed. Please check your EMAIL_USER and EMAIL_PASS in .env file. Make sure you\'re using an App Password, not your regular Gmail password.';
+    } else if (error.code === 'ECONNECTION') {
+      errorMessage = 'Connection to Gmail failed. Please check your internet connection.';
+    }
+    
+    // Return detailed error for development
+    return {
+      success: false,
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error : undefined
+    };
+  }
+};
+
+// Send welcome email (optional)
+const sendWelcomeEmail = async (email, userName = 'User') => {
+  try {
+    const transporter = createTransporter();
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #10B981, #059669); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🌱 Welcome to UrbanSprout!</h1>
+          </div>
+          
+          <div class="content">
+            <h3>Hello ${userName}!</h3>
+            
+            <p>Welcome to UrbanSprout - your journey to urban gardening success starts here! 🌿</p>
+            
+            <p>You can now:</p>
+            <ul>
+              <li>🌱 Get personalized plant recommendations</li>
+              <li>🛒 Shop for gardening supplies</li>
+              <li>📚 Access expert gardening guides</li>
+              <li>💬 Connect with the gardening community</li>
+            </ul>
+            
+            <div style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" class="button">Start Gardening</a>
+            </div>
+            
+            <p>Happy gardening!<br>
+            The UrbanSprout Team 🌿</p>
+          </div>
+          
+          <div class="footer">
+            <p>© 2025 UrbanSprout. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"UrbanSprout" <${process.env.EMAIL_USER || 'noreply@urbansprout.com'}>`,
+      to: email,
+      subject: '🌱 Welcome to UrbanSprout - Let\'s Start Gardening!',
+      html: htmlContent
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Welcome email sent:', info.messageId);
+    
+    return {
+      success: true,
+      messageId: info.messageId
+    };
+
+  } catch (error) {
+    console.error('Error sending welcome email:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// Send user registration confirmation email
+const sendRegistrationEmail = async (email, userName, userRole = 'beginner') => {
+  try {
+    const transporter = createTransporter();
+
+    const roleDescription = {
+      'beginner': 'Beginner Gardener',
+      'expert': 'Expert Gardener',
+      'vendor': 'Plant Vendor',
+      'admin': 'Administrator'
+    };
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #10B981, #059669); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .role-badge { background: #E0F2FE; color: #0369A1; padding: 8px 16px; border-radius: 20px; display: inline-block; font-weight: bold; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🎉 Welcome to UrbanSprout!</h1>
+            <h2>Registration Successful</h2>
+          </div>
+          
+          <div class="content">
+            <h3>Hello ${userName}!</h3>
+            
+            <p>Congratulations! Your account has been successfully created on UrbanSprout.</p>
+            
+            <div style="text-align: center;">
+              <div class="role-badge">${roleDescription[userRole] || 'Gardener'}</div>
+            </div>
+            
+            <p>Your account details:</p>
+            <ul>
+              <li><strong>Email:</strong> ${email}</li>
+              <li><strong>Role:</strong> ${roleDescription[userRole] || 'Gardener'}</li>
+              <li><strong>Registration Date:</strong> ${new Date().toLocaleDateString()}</li>
+            </ul>
+            
+            <p>You can now:</p>
+            <ul>
+              <li>🌱 Get personalized plant recommendations</li>
+              <li>🛒 Shop for gardening supplies</li>
+              <li>📚 Access expert gardening guides</li>
+              <li>💬 Connect with the gardening community</li>
+              ${userRole === 'expert' ? '<li>📝 Share your expertise with others</li>' : ''}
+              ${userRole === 'vendor' ? '<li>🏪 Start selling your plants</li>' : ''}
+            </ul>
+            
+            <div style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" class="button">Start Your Journey</a>
+            </div>
+            
+            <p>If you have any questions, feel free to contact our support team.</p>
+            
+            <p>Happy gardening!<br>
+            The UrbanSprout Team 🌿</p>
+          </div>
+          
+          <div class="footer">
+            <p>This email was sent from UrbanSprout - Urban Gardening Made Easy</p>
+            <p>© 2025 UrbanSprout. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"UrbanSprout" <${process.env.EMAIL_USER || 'noreply@urbansprout.com'}>`,
+      to: email,
+      subject: '🎉 Welcome to UrbanSprout - Registration Successful!',
+      html: htmlContent,
+      text: `
+        Hello ${userName}!
+        
+        Congratulations! Your account has been successfully created on UrbanSprout.
+        
+        Your account details:
+        - Email: ${email}
+        - Role: ${roleDescription[userRole] || 'Gardener'}
+        - Registration Date: ${new Date().toLocaleDateString()}
+        
+        You can now access all features of UrbanSprout and start your gardening journey!
+        
+        Visit: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard
+        
+        Happy gardening!
+        The UrbanSprout Team
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Registration email sent:', info.messageId);
+    
+    return {
+      success: true,
+      messageId: info.messageId
+    };
+
+  } catch (error) {
+    console.error('Error sending registration email:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// Send blog post rejection email
+const sendBlogRejectionEmail = async (email, userName, blogTitle, rejectionReason) => {
+  try {
+    const transporter = createTransporter();
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #EF4444, #DC2626); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .feedback-box { background: #FEF2F2; border: 1px solid #FECACA; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .blog-title { background: #E5E7EB; padding: 15px; border-radius: 5px; font-weight: bold; margin: 15px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📝 Blog Post Feedback</h1>
+            <h2>Your Content Needs Review</h2>
+          </div>
+          
+          <div class="content">
+            <h3>Hello ${userName}!</h3>
+            
+            <p>Thank you for submitting your blog post to UrbanSprout. After careful review, we need to ask for some improvements before we can publish it.</p>
+            
+            <div class="blog-title">
+              📄 "${blogTitle}"
+            </div>
+            
+            <div class="feedback-box">
+              <h4>📋 Feedback from our editorial team:</h4>
+              <p><strong>Reason for revision:</strong></p>
+              <p>${rejectionReason}</p>
+            </div>
+            
+            <p>Don't worry! This is a normal part of our content review process. We want to ensure all content meets our quality standards and provides value to our gardening community.</p>
+            
+            <p><strong>Next steps:</strong></p>
+            <ul>
+              <li>Review the feedback above</li>
+              <li>Make the necessary improvements</li>
+              <li>Resubmit your blog post</li>
+              <li>Our team will review it again</li>
+            </ul>
+            
+            <div style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" class="button">Edit Your Post</a>
+            </div>
+            
+            <p>We appreciate your contribution to the UrbanSprout community and look forward to publishing your improved content!</p>
+            
+            <p>Happy gardening!<br>
+            The UrbanSprout Editorial Team 🌿</p>
+          </div>
+          
+          <div class="footer">
+            <p>This email was sent from UrbanSprout - Urban Gardening Made Easy</p>
+            <p>© 2025 UrbanSprout. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"UrbanSprout Editorial Team" <${process.env.EMAIL_USER || 'noreply@urbansprout.com'}>`,
+      to: email,
+      subject: '📝 Blog Post Feedback - UrbanSprout',
+      html: htmlContent,
+      text: `
+        Hello ${userName}!
+        
+        Thank you for submitting your blog post to UrbanSprout. After careful review, we need to ask for some improvements before we can publish it.
+        
+        Blog Post: "${blogTitle}"
+        
+        Feedback from our editorial team:
+        ${rejectionReason}
+        
+        Don't worry! This is a normal part of our content review process. Please review the feedback, make the necessary improvements, and resubmit your blog post.
+        
+        Visit: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard
+        
+        Happy gardening!
+        The UrbanSprout Editorial Team
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Blog rejection email sent:', info.messageId);
+    
+    return {
+      success: true,
+      messageId: info.messageId
+    };
+
+  } catch (error) {
+    console.error('Error sending blog rejection email:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// Send blog post approval email
+const sendBlogApprovalEmail = async (email, userName, blogTitle) => {
+  try {
+    const transporter = createTransporter();
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #10B981, #059669); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .success-box { background: #F0FDF4; border: 1px solid #BBF7D0; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .blog-title { background: #E5E7EB; padding: 15px; border-radius: 5px; font-weight: bold; margin: 15px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🎉 Blog Post Published!</h1>
+            <h2>Congratulations!</h2>
+          </div>
+          
+          <div class="content">
+            <h3>Hello ${userName}!</h3>
+            
+            <p>Great news! Your blog post has been approved and is now live on UrbanSprout!</p>
+            
+            <div class="blog-title">
+              📄 "${blogTitle}"
+            </div>
+            
+            <div class="success-box">
+              <h4>✅ Your content is now live!</h4>
+              <p>Your blog post has been published and is now available for our community to read and enjoy.</p>
+            </div>
+            
+            <p>What happens next:</p>
+            <ul>
+              <li>🌱 Community members can read your post</li>
+              <li>💬 They can leave comments and engage</li>
+              <li>👍 Your content helps fellow gardeners</li>
+              <li>📈 You build your reputation in the community</li>
+            </ul>
+            
+            <div style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/blog" class="button">View Your Post</a>
+            </div>
+            
+            <p>Thank you for contributing to the UrbanSprout community! Your expertise helps make urban gardening accessible to everyone.</p>
+            
+            <p>Keep sharing your knowledge!<br>
+            The UrbanSprout Editorial Team 🌿</p>
+          </div>
+          
+          <div class="footer">
+            <p>This email was sent from UrbanSprout - Urban Gardening Made Easy</p>
+            <p>© 2025 UrbanSprout. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"UrbanSprout Editorial Team" <${process.env.EMAIL_USER || 'noreply@urbansprout.com'}>`,
+      to: email,
+      subject: '🎉 Your Blog Post is Live - UrbanSprout',
+      html: htmlContent,
+      text: `
+        Hello ${userName}!
+        
+        Great news! Your blog post has been approved and is now live on UrbanSprout!
+        
+        Blog Post: "${blogTitle}"
+        
+        Your content is now published and available for our community to read and enjoy.
+        
+        Visit: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/blog
+        
+        Thank you for contributing to the UrbanSprout community!
+        
+        Keep sharing your knowledge!
+        The UrbanSprout Editorial Team
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Blog approval email sent:', info.messageId);
+    
+    return {
+      success: true,
+      messageId: info.messageId
+    };
+
+  } catch (error) {
+    console.error('Error sending blog approval email:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// Send order confirmation email
+const sendOrderConfirmationEmail = async (email, userName, orderDetails) => {
+  try {
+    const transporter = createTransporter();
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #10B981, #059669); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .order-details { background: white; border: 1px solid #E5E7EB; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .order-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #F3F4F6; }
+          .order-item:last-child { border-bottom: none; }
+          .total { font-weight: bold; font-size: 18px; color: #10B981; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🛒 Order Confirmation</h1>
+            <h2>Thank You for Your Purchase!</h2>
+          </div>
+          
+          <div class="content">
+            <h3>Hello ${userName}!</h3>
+            
+            <p>Thank you for your order! We're excited to help you with your gardening journey.</p>
+            
+            <div class="order-details">
+              <h4>📋 Order Details</h4>
+              <div class="order-item">
+                <span><strong>Order ID:</strong></span>
+                <span>${orderDetails.orderId}</span>
+              </div>
+              <div class="order-item">
+                <span><strong>Order Date:</strong></span>
+                <span>${new Date(orderDetails.orderDate).toLocaleDateString()}</span>
+              </div>
+              <div class="order-item">
+                <span><strong>Payment Status:</strong></span>
+                <span style="color: #10B981; font-weight: bold;">✅ Paid</span>
+              </div>
+              <div class="order-item">
+                <span><strong>Total Amount:</strong></span>
+                <span class="total">$${orderDetails.totalAmount}</span>
+              </div>
+            </div>
+            
+            <div class="order-details">
+              <h4>📦 Items Ordered</h4>
+              ${orderDetails.items.map(item => `
+                <div class="order-item">
+                  <span>${item.name} (Qty: ${item.quantity})</span>
+                  <span>$${item.price}</span>
+                </div>
+              `).join('')}
+            </div>
+            
+            <div class="order-details">
+              <h4>🚚 Shipping Information</h4>
+              <div class="order-item">
+                <span><strong>Shipping Address:</strong></span>
+                <span>${orderDetails.shippingAddress}</span>
+              </div>
+              <div class="order-item">
+                <span><strong>Estimated Delivery:</strong></span>
+                <span>${orderDetails.estimatedDelivery}</span>
+              </div>
+            </div>
+            
+            <p>We'll send you another email when your order ships with tracking information.</p>
+            
+            <div style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" class="button">Track Your Order</a>
+            </div>
+            
+            <p>If you have any questions about your order, please don't hesitate to contact our support team.</p>
+            
+            <p>Happy gardening!<br>
+            The UrbanSprout Team 🌿</p>
+          </div>
+          
+          <div class="footer">
+            <p>This email was sent from UrbanSprout - Urban Gardening Made Easy</p>
+            <p>© 2025 UrbanSprout. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"UrbanSprout Store" <${process.env.EMAIL_USER || 'noreply@urbansprout.com'}>`,
+      to: email,
+      subject: '🛒 Order Confirmation - UrbanSprout',
+      html: htmlContent,
+      text: `
+        Hello ${userName}!
+        
+        Thank you for your order! We're excited to help you with your gardening journey.
+        
+        Order Details:
+        - Order ID: ${orderDetails.orderId}
+        - Order Date: ${new Date(orderDetails.orderDate).toLocaleDateString()}
+        - Payment Status: Paid
+        - Total Amount: $${orderDetails.totalAmount}
+        
+        Items Ordered:
+        ${orderDetails.items.map(item => `- ${item.name} (Qty: ${item.quantity}) - $${item.price}`).join('\n')}
+        
+        Shipping Information:
+        - Address: ${orderDetails.shippingAddress}
+        - Estimated Delivery: ${orderDetails.estimatedDelivery}
+        
+        We'll send you another email when your order ships with tracking information.
+        
+        Visit: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard
+        
+        Happy gardening!
+        The UrbanSprout Team
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Order confirmation email sent:', info.messageId);
+    
+    return {
+      success: true,
+      messageId: info.messageId
+    };
+
+  } catch (error) {
+    console.error('Error sending order confirmation email:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// Send payment confirmation email
+const sendPaymentConfirmationEmail = async (email, userName, paymentDetails) => {
+  try {
+    const transporter = createTransporter();
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #10B981, #059669); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; background: #10B981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .payment-details { background: white; border: 1px solid #E5E7EB; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .payment-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #F3F4F6; }
+          .payment-item:last-child { border-bottom: none; }
+          .success-badge { background: #D1FAE5; color: #065F46; padding: 8px 16px; border-radius: 20px; display: inline-block; font-weight: bold; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>💳 Payment Confirmed!</h1>
+            <h2>Transaction Successful</h2>
+          </div>
+          
+          <div class="content">
+            <h3>Hello ${userName}!</h3>
+            
+            <p>Great news! Your payment has been successfully processed.</p>
+            
+            <div style="text-align: center;">
+              <div class="success-badge">✅ Payment Successful</div>
+            </div>
+            
+            <div class="payment-details">
+              <h4>💳 Payment Details</h4>
+              <div class="payment-item">
+                <span><strong>Transaction ID:</strong></span>
+                <span>${paymentDetails.transactionId}</span>
+              </div>
+              <div class="payment-item">
+                <span><strong>Payment Date:</strong></span>
+                <span>${new Date(paymentDetails.paymentDate).toLocaleDateString()}</span>
+              </div>
+              <div class="payment-item">
+                <span><strong>Payment Method:</strong></span>
+                <span>${paymentDetails.paymentMethod}</span>
+              </div>
+              <div class="payment-item">
+                <span><strong>Amount Paid:</strong></span>
+                <span style="color: #10B981; font-weight: bold; font-size: 18px;">$${paymentDetails.amount}</span>
+              </div>
+              <div class="payment-item">
+                <span><strong>Order Reference:</strong></span>
+                <span>${paymentDetails.orderId}</span>
+              </div>
+            </div>
+            
+            <p>Your payment has been processed securely and your order is now being prepared for shipment.</p>
+            
+            <p>What happens next:</p>
+            <ul>
+              <li>📦 Your order is being prepared</li>
+              <li>🚚 You'll receive shipping confirmation soon</li>
+              <li>📧 Tracking information will be sent to your email</li>
+              <li>🌱 Your plants will arrive safely at your door</li>
+            </ul>
+            
+            <div style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" class="button">View Order Status</a>
+            </div>
+            
+            <p>Thank you for choosing UrbanSprout for your gardening needs!</p>
+            
+            <p>Happy gardening!<br>
+            The UrbanSprout Team 🌿</p>
+          </div>
+          
+          <div class="footer">
+            <p>This email was sent from UrbanSprout - Urban Gardening Made Easy</p>
+            <p>© 2025 UrbanSprout. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"UrbanSprout Payments" <${process.env.EMAIL_USER || 'noreply@urbansprout.com'}>`,
+      to: email,
+      subject: '💳 Payment Confirmed - UrbanSprout',
+      html: htmlContent,
+      text: `
+        Hello ${userName}!
+        
+        Great news! Your payment has been successfully processed.
+        
+        Payment Details:
+        - Transaction ID: ${paymentDetails.transactionId}
+        - Payment Date: ${new Date(paymentDetails.paymentDate).toLocaleDateString()}
+        - Payment Method: ${paymentDetails.paymentMethod}
+        - Amount Paid: $${paymentDetails.amount}
+        - Order Reference: ${paymentDetails.orderId}
+        
+        Your payment has been processed securely and your order is now being prepared for shipment.
+        
+        Visit: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard
+        
+        Thank you for choosing UrbanSprout!
+        
+        Happy gardening!
+        The UrbanSprout Team
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Payment confirmation email sent:', info.messageId);
+    
+    return {
+      success: true,
+      messageId: info.messageId
+    };
+
+  } catch (error) {
+    console.error('Error sending payment confirmation email:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+module.exports = {
+  sendPasswordResetEmail,
+  sendWelcomeEmail,
+  sendRegistrationEmail,
+  sendBlogRejectionEmail,
+  sendBlogApprovalEmail,
+  sendOrderConfirmationEmail,
+  sendPaymentConfirmationEmail
+};

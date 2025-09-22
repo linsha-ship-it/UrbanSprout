@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { FaCrown, FaUsers, FaStore, FaChartLine, FaCog, FaLock } from 'react-icons/fa';
+import { FaCrown, FaUsers, FaStore, FaChartLine, FaCog, FaLock, FaLeaf } from 'react-icons/fa';
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -66,7 +66,7 @@ const AdminDashboard = () => {
                 <FaChartLine className="text-yellow-600 text-xl" />
               </div>
               <div className="ml-4">
-                <h3 className="text-2xl font-bold text-gray-900">$12.5k</h3>
+                <h3 className="text-2xl font-bold text-gray-900">₹12.5k</h3>
                 <p className="text-gray-600 text-sm">Monthly Revenue</p>
               </div>
             </div>

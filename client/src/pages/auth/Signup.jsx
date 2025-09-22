@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FaGoogle, FaEye, FaEyeSlash, FaLeaf, FaUser, FaStar, FaStore, FaCrown, FaCheck, FaTimes } from 'react-icons/fa';
-import { signInWithGoogle } from '../../config/firebase';
+import { FaEye, FaEyeSlash, FaLeaf, FaUser, FaStar, FaStore, FaCrown, FaCheck, FaTimes } from 'react-icons/fa';
 import { authAPI } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
-import { validateForm, validatePassword, getPasswordStrength, getValidationMessage } from '../../utils/validation';
+import { validateForm, validatePassword, getPasswordStrength, getValidationMessage, validateEmail } from '../../utils/validation';
 
 const Signup = () => {
   const navigate = useNavigate();
@@ -25,6 +24,82 @@ const Signup = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [fieldMessages, setFieldMessages] = useState({});
+  const [emailValidation, setEmailValidation] = useState({
+    isChecking: false,
+    isValid: null,
+    message: '',
+    exists: null
+  });
+
+  // Email validation function
+  const checkEmailAvailability = useCallback(async (email) => {
+    if (!email || !validateEmail(email)) {
+      setEmailValidation({
+        isChecking: false,
+        isValid: false,
+        message: 'Please enter a valid email address',
+        exists: null
+      });
+      return;
+    }
+
+    setEmailValidation(prev => ({ ...prev, isChecking: true }));
+
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
+      const response = await fetch(`${API_BASE_URL}/auth/check-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setEmailValidation({
+          isChecking: false,
+          isValid: !data.exists,
+          message: data.exists ? 'Email already registered' : 'Email available',
+          exists: data.exists
+        });
+      } else {
+        setEmailValidation({
+          isChecking: false,
+          isValid: null,
+          message: 'Unable to verify email',
+          exists: null
+        });
+      }
+    } catch (error) {
+      console.error('Email validation error:', error);
+      setEmailValidation({
+        isChecking: false,
+        isValid: null,
+        message: 'Unable to verify email',
+        exists: null
+      });
+    }
+  }, []);
+
+  // Debounced email validation
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (formData.email) {
+        checkEmailAvailability(formData.email);
+      } else {
+        setEmailValidation({
+          isChecking: false,
+          isValid: null,
+          message: '',
+          exists: null
+        });
+      }
+    }, 800); // Wait 800ms after user stops typing
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.email, checkEmailAvailability]);
 
   const roles = [
     {
@@ -314,18 +389,47 @@ const Signup = () => {
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                 Email Address
               </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                  fieldMessages.email && fieldMessages.email.includes('Invalid') ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="Enter your email"
-              />
+              <div className="relative">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 pr-10 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                    emailValidation.exists === true ? 'border-red-300' : 
+                    emailValidation.isValid === true ? 'border-green-300' : 
+                    fieldMessages.email && fieldMessages.email.includes('Invalid') ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="Enter your email"
+                />
+                
+                {/* Email validation indicator */}
+                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                  {emailValidation.isChecking ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                  ) : emailValidation.exists === true ? (
+                    <FaTimes className="h-4 w-4 text-red-500" />
+                  ) : emailValidation.isValid === true ? (
+                    <FaCheck className="h-4 w-4 text-green-500" />
+                  ) : null}
+                </div>
+              </div>
+              
+              {/* Email validation message */}
+              {emailValidation.message && (
+                <p className={`mt-1 text-sm flex items-center ${
+                  emailValidation.exists === true ? 'text-red-600' : 
+                  emailValidation.isValid === true ? 'text-green-600' : 'text-gray-500'
+                }`}>
+                  {emailValidation.exists === true && <FaTimes className="h-3 w-3 mr-1" />}
+                  {emailValidation.isValid === true && <FaCheck className="h-3 w-3 mr-1" />}
+                  {emailValidation.message}
+                </p>
+              )}
+              
+              {/* Field validation message */}
               {fieldMessages.email && (
                 <p className={`mt-1 text-sm ${fieldMessages.email.includes('Invalid') ? 'text-red-600' : 'text-gray-500'}`}>
                   {fieldMessages.email}
@@ -469,7 +573,7 @@ const Signup = () => {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading || !passwordValidation.isValid}
+            disabled={loading || !passwordValidation.isValid || emailValidation.exists === true || emailValidation.isChecking}
             className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? (
@@ -482,28 +586,6 @@ const Signup = () => {
             )}
           </button>
 
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gradient-to-br from-green-50 to-blue-50 text-gray-500">
-                Or continue with
-              </span>
-            </div>
-          </div>
-
-          {/* Google Sign In */}
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-            className="w-full flex justify-center items-center py-3 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <FaGoogle className="h-4 w-4 text-red-500 mr-2" />
-            Sign up with Google
-          </button>
 
           {/* Sign in link */}
           <div className="text-center">

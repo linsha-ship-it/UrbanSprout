@@ -2,8 +2,10 @@ const Plant = require('../models/Plant');
 const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const Wishlist = require('../models/Wishlist');
+const User = require('../models/User');
 const { AppError } = require('../middlewares/errorHandler');
 const { asyncHandler } = require('../middlewares/errorHandler');
+const { sendOrderConfirmationEmail, sendPaymentConfirmationEmail } = require('../utils/emailService');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 
@@ -300,7 +302,7 @@ const createOrder = asyncHandler(async (req, res, next) => {
 
   // Calculate tax and shipping (simplified)
   const tax = subtotal * 0.08; // 8% tax
-  const shippingCost = subtotal > 50 ? 0 : 9.99; // Free shipping over $50
+  const shippingCost = subtotal > 50 ? 0 : 9.99; // Free shipping over ₹50
   let discount = 0;
 
   // Apply coupon if provided
@@ -527,6 +529,50 @@ const verifyPayment = asyncHandler(async (req, res, next) => {
       status: 'Pending', // Use valid enum value
       notes: `Razorpay Order ID: ${razorpay_order_id}, Payment ID: ${razorpay_payment_id}`
     });
+
+    // Get user details for email
+    const user = await User.findById(req.user._id);
+
+    // Send order confirmation email
+    try {
+      const orderDetails = {
+        orderId: order._id.toString().slice(-8),
+        orderDate: order.createdAt,
+        totalAmount: order.total,
+        items: order.items.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        shippingAddress: `${order.shippingAddress.fullName}, ${order.shippingAddress.address}, ${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.postalCode}`,
+        estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString() // 7 days from now
+      };
+
+      // Temporarily disabled due to Gmail authentication issues
+      // await sendOrderConfirmationEmail(user.email, user.name, orderDetails);
+      console.log(`Order confirmation email would be sent to ${user.email} (disabled)`);
+    } catch (emailError) {
+      console.error('Failed to send order confirmation email:', emailError);
+      // Don't fail payment if email fails
+    }
+
+    // Send payment confirmation email
+    try {
+      const paymentDetails = {
+        transactionId: razorpay_payment_id,
+        paymentDate: new Date(),
+        paymentMethod: 'UPI',
+        amount: order.total,
+        orderId: order._id.toString().slice(-8)
+      };
+
+      // Temporarily disabled due to Gmail authentication issues
+      // await sendPaymentConfirmationEmail(user.email, user.name, paymentDetails);
+      console.log(`Payment confirmation email would be sent to ${user.email} (disabled)`);
+    } catch (emailError) {
+      console.error('Failed to send payment confirmation email:', emailError);
+      // Don't fail payment if email fails
+    }
 
     res.json({
       success: true,

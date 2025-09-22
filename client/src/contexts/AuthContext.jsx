@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth } from '../config/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 const AuthContext = createContext();
 
@@ -15,53 +15,74 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('urbansprout_token'));
+  const [token, setToken] = useState(null);
+
+  // Clear all authentication data
+  const clearAuthData = () => {
+    localStorage.removeItem('urbansprout_token');
+    localStorage.removeItem('urbansprout_user');
+    localStorage.removeItem('firebase_token');
+    setUser(null);
+    setToken(null);
+  };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Get the ID token from Firebase
-        const idToken = await firebaseUser.getIdToken();
-        
-        // Store user info
-        setUser({
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
-          emailVerified: firebaseUser.emailVerified
-        });
-        
-        // Store token if it's a Firebase user
-        if (idToken) {
-          localStorage.setItem('firebase_token', idToken);
+    const restoreSession = async () => {
+      // Check for existing authentication data on app start
+      const savedToken = localStorage.getItem('urbansprout_token');
+      const savedUser = localStorage.getItem('urbansprout_user');
+      
+      if (savedToken && savedUser) {
+        try {
+          const userData = JSON.parse(savedUser);
+          
+          // Validate token by making a test API call
+          try {
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/auth/profile`, {
+              headers: {
+                'Authorization': `Bearer ${savedToken}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (response.ok) {
+              // Token is valid, restore session
+              setUser(userData);
+              setToken(savedToken);
+              console.log('User session restored from localStorage');
+            } else {
+              // Token is invalid, clear auth data
+              console.log('Token expired or invalid, clearing auth data');
+              clearAuthData();
+            }
+          } catch (error) {
+            // Network error or token validation failed
+            console.log('Token validation failed, clearing auth data');
+            clearAuthData();
+          }
+        } catch (error) {
+          console.error('Error parsing saved user data:', error);
+          clearAuthData();
         }
-      } else {
-        setUser(null);
-        localStorage.removeItem('firebase_token');
       }
+      
       setLoading(false);
-    });
+    };
 
-    // Check for existing backend token
-    const backendToken = localStorage.getItem('urbansprout_token');
-    const userData = localStorage.getItem('urbansprout_user');
-    
-    if (backendToken && userData) {
-      try {
-        const parsedUser = JSON.parse(userData);
-        setUser(parsedUser);
-        setToken(backendToken);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error parsing stored user data:', error);
-        localStorage.removeItem('urbansprout_token');
-        localStorage.removeItem('urbansprout_user');
-        setLoading(false);
+    restoreSession();
+
+    // Listen for Firebase auth state changes (for Google sign-in)
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser && !user) {
+        // User signed in with Firebase, but we already have a session
+        // Don't override existing session
+        console.log('Firebase user detected, but maintaining existing session');
+      } else if (!firebaseUser && user) {
+        // Firebase user signed out, but we have a session
+        // Keep the existing session unless explicitly logged out
+        console.log('Firebase user signed out, maintaining existing session');
       }
-    } else {
-      setLoading(false);
-    }
+    });
 
     return () => unsubscribe();
   }, []);
@@ -96,12 +117,41 @@ export const AuthProvider = ({ children }) => {
     return updatedUser;
   };
 
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
     setToken(null);
+    
+    // Clear all authentication-related data
     localStorage.removeItem('urbansprout_token');
     localStorage.removeItem('urbansprout_user');
     localStorage.removeItem('firebase_token');
+    localStorage.removeItem('rememberedEmail');
+    
+    // Clear any cart/wishlist data for the logged-out user
+    const allKeys = Object.keys(localStorage);
+    allKeys.forEach(key => {
+      if (key.startsWith('cart_') || key.startsWith('wishlist_')) {
+        localStorage.removeItem(key);
+      }
+    });
+    
+    // Sign out from Firebase if user was signed in with Google
+    try {
+      await signOut(auth);
+      console.log('Firebase user signed out');
+    } catch (error) {
+      console.log('No Firebase user to sign out or error:', error);
+    }
+    
+    console.log('User logged out and all data cleared');
+  };
+
+  // Development helper to force clear all data
+  const clearAllData = () => {
+    localStorage.clear();
+    setUser(null);
+    setToken(null);
+    console.log('All localStorage data cleared');
   };
 
   const value = {
@@ -111,6 +161,7 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     updateProfile,
+    clearAllData,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'admin',
     isVendor: user?.role === 'vendor',

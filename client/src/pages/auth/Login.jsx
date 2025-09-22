@@ -19,6 +19,21 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
+  const [rememberMe, setRememberMe] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState('');
+  const [resetUrl, setResetUrl] = useState('');
+
+  // Load remembered email on component mount
+  useEffect(() => {
+    const rememberedEmail = localStorage.getItem('rememberedEmail');
+    if (rememberedEmail) {
+      setFormData(prev => ({ ...prev, email: rememberedEmail }));
+      setRememberMe(true);
+    }
+  }, []);
 
   // Handle redirect result from Google Sign-In
   useEffect(() => {
@@ -91,6 +106,49 @@ const Login = () => {
     if (error) setError('');
   };
 
+  // Handle forgot password
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    
+    if (!forgotPasswordEmail) {
+      setForgotPasswordMessage('Please enter your email address');
+      return;
+    }
+
+    if (!validateEmail(forgotPasswordEmail)) {
+      setForgotPasswordMessage('Please enter a valid email address');
+      return;
+    }
+
+    setForgotPasswordLoading(true);
+    setForgotPasswordMessage('');
+
+    try {
+      const response = await authAPI.forgotPassword({ email: forgotPasswordEmail });
+      
+      if (response.success) {
+        if (response.resetUrl) {
+          // Email sending failed, show link directly
+          setForgotPasswordMessage(response.message);
+          setResetUrl(response.resetUrl);
+        } else {
+          // Email sent successfully
+          setForgotPasswordMessage(response.message);
+          setResetUrl('');
+        }
+      } else {
+        setForgotPasswordMessage(response.message || 'Failed to send reset email');
+        setResetUrl('');
+      }
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      setForgotPasswordMessage(error.message || 'Failed to generate reset link. Please try again.');
+      setResetUrl('');
+    } finally {
+      setForgotPasswordLoading(false);
+    }
+  };
+
   const validateForm = () => {
     const errors = {};
     
@@ -120,21 +178,37 @@ const Login = () => {
       const response = await authAPI.login(formData);
       
       if (response.success) {
+        // Handle Remember Me functionality
+        if (rememberMe) {
+          localStorage.setItem('rememberedEmail', formData.email);
+        } else {
+          localStorage.removeItem('rememberedEmail');
+        }
+        
+        console.log('Login successful, user data:', response.data.user);
+        console.log('User role:', response.data.user.role);
+        
         login(response.data.user, response.data.token);
         
         // Redirect based on user role
         const userRole = response.data.user.role;
+        console.log('Redirecting based on role:', userRole);
+        
         switch (userRole) {
           case 'admin':
+            console.log('Redirecting to admin dashboard');
             navigate('/admin/dashboard');
             break;
           case 'vendor':
+            console.log('Redirecting to vendor dashboard');
             navigate('/vendor/dashboard');
             break;
           case 'expert':
+            console.log('Redirecting to expert dashboard');
             navigate('/expert/dashboard');
             break;
           default:
+            console.log('Redirecting to regular dashboard');
             navigate('/dashboard');
         }
       }
@@ -260,18 +334,21 @@ const Login = () => {
                 id="remember-me"
                 name="remember-me"
                 type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
                 className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
               />
               <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
                 Remember me
               </label>
             </div>
-            <Link
-              to="/forgot-password"
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
               className="text-sm text-green-600 hover:text-green-500"
             >
               Forgot password?
-            </Link>
+            </button>
           </div>
 
           {/* Submit Button */}
@@ -327,6 +404,111 @@ const Login = () => {
           </div>
         </form>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900">Reset Password</h2>
+                <button
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setForgotPasswordEmail('');
+                    setForgotPasswordMessage('');
+                    setResetUrl('');
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-600 mb-4">
+                Enter your email address and we'll generate a secure link to reset your password.
+              </p>
+
+              <form onSubmit={handleForgotPassword}>
+                <div className="mb-4">
+                  <label htmlFor="forgot-email" className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    id="forgot-email"
+                    type="email"
+                    value={forgotPasswordEmail}
+                    onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="Enter your email"
+                    required
+                  />
+                </div>
+
+                {forgotPasswordMessage && !resetUrl && (
+                  <div className={`mb-4 p-3 rounded-lg text-sm ${
+                    forgotPasswordMessage.includes('successfully') 
+                      ? 'bg-green-50 text-green-700 border border-green-200' 
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}>
+                    {forgotPasswordMessage}
+                  </div>
+                )}
+
+                {resetUrl && (
+                  <div className="mb-4 p-3 rounded-lg text-sm bg-blue-50 text-blue-700 border border-blue-200">
+                    <div className="mt-3">
+                      <p className="font-medium mb-2">Click the link below to reset your password:</p>
+                      <div className="bg-gray-100 p-2 rounded border">
+                        <a 
+                          href={resetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 break-all text-xs"
+                        >
+                          {resetUrl}
+                        </a>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(resetUrl);
+                          alert('Reset link copied to clipboard!');
+                        }}
+                        className="mt-2 px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+                      >
+                        Copy Link
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowForgotPassword(false);
+                      setForgotPasswordEmail('');
+                      setForgotPasswordMessage('');
+                      setResetUrl('');
+                    }}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotPasswordLoading}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {forgotPasswordLoading ? 'Sending...' : 'Send Reset Link'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

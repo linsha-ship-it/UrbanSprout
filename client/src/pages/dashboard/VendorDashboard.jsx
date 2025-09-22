@@ -30,7 +30,7 @@ const VendorDashboard = () => {
                 <FaDollarSign className="text-green-600 text-xl" />
               </div>
               <div className="ml-4">
-                <h3 className="text-2xl font-bold text-gray-900">$2,450</h3>
+                <h3 className="text-2xl font-bold text-gray-900">₹2,450</h3>
                 <p className="text-gray-600 text-sm">Monthly Revenue</p>
               </div>
             </div>
@@ -115,7 +115,7 @@ const VendorDashboard = () => {
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div>
                   <h4 className="font-medium text-gray-900">#ORD-001234</h4>
-                  <p className="text-gray-600 text-sm">Snake Plant + Pot • $45.99</p>
+                  <p className="text-gray-600 text-sm">Snake Plant + Pot • ₹45.99</p>
                 </div>
                 <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
                   Shipped
@@ -124,7 +124,7 @@ const VendorDashboard = () => {
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div>
                   <h4 className="font-medium text-gray-900">#ORD-001235</h4>
-                  <p className="text-gray-600 text-sm">Monstera Deliciosa • $89.99</p>
+                  <p className="text-gray-600 text-sm">Monstera Deliciosa • ₹89.99</p>
                 </div>
                 <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
                   Processing
@@ -133,7 +133,7 @@ const VendorDashboard = () => {
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div>
                   <h4 className="font-medium text-gray-900">#ORD-001236</h4>
-                  <p className="text-gray-600 text-sm">Pothos Bundle • $29.99</p>
+                  <p className="text-gray-600 text-sm">Pothos Bundle • ₹29.99</p>
                 </div>
                 <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
                   New
@@ -157,7 +157,7 @@ const VendorDashboard = () => {
                   <p className="text-gray-600 text-sm">15 sold this month</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-gray-900">$45.99</p>
+                  <p className="font-semibold text-gray-900">₹45.99</p>
                   <p className="text-green-600 text-sm">+12%</p>
                 </div>
               </div>
@@ -172,7 +172,7 @@ const VendorDashboard = () => {
                   <p className="text-gray-600 text-sm">12 sold this month</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-gray-900">$29.99</p>
+                  <p className="font-semibold text-gray-900">₹29.99</p>
                   <p className="text-green-600 text-sm">+8%</p>
                 </div>
               </div>
@@ -187,7 +187,7 @@ const VendorDashboard = () => {
                   <p className="text-gray-600 text-sm">8 sold this month</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-gray-900">$89.99</p>
+                  <p className="font-semibold text-gray-900">₹89.99</p>
                   <p className="text-green-600 text-sm">+5%</p>
                 </div>
               </div>

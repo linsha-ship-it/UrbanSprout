@@ -8,7 +8,9 @@ const {
   changePassword,
   updatePreferences,
   logout,
-  deleteAccount
+  deleteAccount,
+  forgotPassword,
+  resetPassword
 } = require('../controllers/authController');
 const { protect } = require('../middlewares/auth');
 const admin = require('firebase-admin');
@@ -55,6 +57,41 @@ const router = express.Router();
 router.post('/register', validateRegistration, register);
 router.post('/login', validateLogin, login);
 router.post('/google', googleSignIn);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
+
+// Email validation endpoint
+router.post('/check-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    // Check if user exists with this email
+    const User = require('../models/User');
+    const existingUser = await User.findOne({ 
+      email: email.toLowerCase() 
+    });
+
+    res.json({
+      success: true,
+      exists: !!existingUser,
+      message: existingUser ? 'Email already registered' : 'Email available'
+    });
+
+  } catch (error) {
+    console.error('Email check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking email availability'
+    });
+  }
+});
 router.post('/firebase-auth', async (req, res) => {
   try {
     const { idToken, role, name, email } = req.body;
@@ -109,16 +146,21 @@ router.post('/firebase-auth', async (req, res) => {
     let user = await require('../models/User').findOne({ email: userEmail.toLowerCase() });
     
     if (!user) {
+      // For new users, check if this is an admin email
+      const adminEmails = ['admin@urbansprout.com', 'lxiao0391@gmail.com'];
+      const isAdminEmail = adminEmails.includes(userEmail.toLowerCase());
+      const defaultRole = isAdminEmail ? 'admin' : 'beginner';
+      
       user = new (require('../models/User'))({
         name: name || decoded?.name || 'User',
         email: userEmail.toLowerCase(),
         firebaseUid: uid,
-        role: role || 'beginner',
+        role: role || defaultRole,
         password: 'firebase-auth' // placeholder
       });
       await user.save();
     } else {
-      // Update Firebase UID if not set
+      // Update Firebase UID if not set, but preserve existing role
       if (!user.firebaseUid) {
         user.firebaseUid = uid;
         await user.save();

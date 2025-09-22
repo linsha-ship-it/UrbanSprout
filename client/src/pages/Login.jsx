@@ -25,13 +25,28 @@ const Login = () => {
         password: formData.password
       })
       if (response.success) {
+        console.log('Login successful, user data:', response.data.user);
+        console.log('User role:', response.data.user.role);
+        
         localStorage.setItem('urbansprout_token', response.data.token)
         localStorage.setItem('urbansprout_user', JSON.stringify(response.data.user))
         const role = response.data.user.role
-        if (role === 'admin') navigate('/admin/dashboard')
-        else if (role === 'vendor') navigate('/vendor/dashboard')
-        else if (role === 'expert') navigate('/expert/dashboard')
-        else navigate('/dashboard')
+        
+        console.log('Redirecting based on role:', role);
+        
+        if (role === 'admin') {
+          console.log('Redirecting to admin dashboard');
+          navigate('/admin/dashboard')
+        } else if (role === 'vendor') {
+          console.log('Redirecting to vendor dashboard');
+          navigate('/vendor/dashboard')
+        } else if (role === 'expert') {
+          console.log('Redirecting to expert dashboard');
+          navigate('/expert/dashboard')
+        } else {
+          console.log('Redirecting to regular dashboard');
+          navigate('/dashboard')
+        }
       } else {
         setError('Login failed. Please try again.')
       }

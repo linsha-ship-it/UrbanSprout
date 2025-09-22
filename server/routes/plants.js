@@ -12,3 +12,10 @@ router.get('/', getAllPlants);
 router.get('/:id', getPlantById);
 
 module.exports = router;
+
+
+
+
+
+
+

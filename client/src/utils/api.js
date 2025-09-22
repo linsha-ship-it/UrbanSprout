@@ -97,6 +97,20 @@ export const authAPI = {
       method: 'PUT',
       body: JSON.stringify(preferences),
     }),
+
+  // Forgot password
+  forgotPassword: (emailData) =>
+    apiCall('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify(emailData),
+    }),
+
+  // Reset password
+  resetPassword: (resetData) =>
+    apiCall('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(resetData),
+    }),
 };
 
 export default apiCall;

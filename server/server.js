@@ -2,7 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+const http = require('http');
 const connectDB = require('./config/database');
+const setupSocketIO = require('./utils/socketIO');
 
 // Load env from project root first (for MONGODB_URI), then server/.env for others
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -55,6 +57,7 @@ const blogRoutes = require('./routes/blog');
 const storeRoutes = require('./routes/store');
 const adminRoutes = require('./routes/admin');
 const chatbotRoutes = require('./routes/chatbot');
+const notificationRoutes = require('./routes/notifications');
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -62,6 +65,7 @@ app.use('/api/blog', blogRoutes);
 app.use('/api/store', storeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -96,8 +100,18 @@ app.use((err, req, res, next) => {
 const DEFAULT_PORT = Number(process.env.PORT) || 5001;
 
 function startServer(port, attemptsLeft = 3) {
-  const server = app.listen(port, () => {
-    // Server started
+  const server = http.createServer(app);
+  
+  // Setup Socket.IO
+  const io = setupSocketIO(server);
+  
+  // Make io available globally for other modules
+  app.set('io', io);
+  
+  server.listen(port, () => {
+    console.log(`🚀 Server running on port ${port}`);
+    console.log(`📡 Socket.IO server initialized`);
+    console.log(`🌱 UrbanSprout Backend is ready!`);
   });
 
   server.on('error', (err) => {

@@ -1,31 +1,50 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Menu, X, Leaf, User, LogOut } from 'lucide-react'
+import { Menu, X, Leaf, User, LogOut, Shield, BarChart3, Users, Package, FileText, ShoppingBag, Cog } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAuth } from '../../contexts/AuthContext'
+import NotificationIcon from '../NotificationIcon'
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, logout, isAuthenticated } = useAuth()
+  const { user, logout, isAuthenticated, clearAllData } = useAuth()
 
-  const navItems = [
-    { name: 'Home', path: '/' },
-    { name: 'Blog', path: '/blog' },
-    { name: 'Plant Suggestion', path: '/plant-suggestion', requiresAuth: true },
-    { name: 'Store', path: '/store', requiresAuth: true },
-    { name: 'Dashboard', path: '/dashboard', requiresAuth: true },
-  ]
+  // Define navigation items based on user role
+  const getNavItems = () => {
+    const baseItems = [
+      { name: 'Home', path: '/' },
+      { name: 'Blog', path: '/blog' },
+      { name: 'Plant Suggestion', path: '/plant-suggestion', requiresAuth: true },
+      { name: 'Store', path: '/store', requiresAuth: true },
+      { name: 'Dashboard', path: '/dashboard', requiresAuth: true },
+    ]
+
+    // For admin users, show no navigation items (admin panel and dashboard will be separate buttons)
+    if (user?.role === 'admin') {
+      return []
+    }
+
+    return baseItems
+  }
+
+  const navItems = getNavItems()
 
   const handleNavClick = (item) => {
     if (item.requiresAuth && !isAuthenticated) {
       navigate('/signup')
+    } else if (item.adminOnly && user?.role !== 'admin') {
+      navigate('/unauthorized')
     } else {
       navigate(item.path)
     }
+  }
+
+  const handleAdminPanelClick = (path) => {
+    navigate(path)
   }
 
   const isActive = (path) => location.pathname === path
@@ -34,6 +53,16 @@ const Navbar = () => {
     logout()
     navigate('/')
     setUserMenuOpen(false)
+  }
+
+  // Development helper: Double-click logo to clear all data
+  const handleLogoClearData = () => {
+    if (process.env.NODE_ENV === 'development') {
+      clearAllData();
+      navigate('/');
+      setUserMenuOpen(false);
+      alert('All authentication data cleared! Please refresh the page.');
+    }
   }
 
   const getDashboardPath = () => {
@@ -60,7 +89,12 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center space-x-2">
+          <Link 
+            to="/" 
+            className="flex items-center space-x-2"
+            onDoubleClick={handleLogoClearData}
+            title="Double-click to clear all data (development)"
+          >
             <motion.div
               whileHover={{ rotate: 360 }}
               transition={{ duration: 0.5 }}
@@ -75,7 +109,8 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            {navItems.map((item) => (
+            {/* Only show navigation items if there are any (not for admin users) */}
+            {navItems.length > 0 && navItems.map((item) => (
               <button
                 key={item.name}
                 onClick={() => handleNavClick(item)}
@@ -98,10 +133,46 @@ const Navbar = () => {
               </button>
             ))}
             
+            {/* Admin Panel Button - Only for admin users */}
+            {user?.role === 'admin' && (
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => handleAdminPanelClick('/admin/users')}
+                  className={cn(
+                    "flex items-center space-x-2 px-3 py-2 text-sm font-medium transition-colors duration-200",
+                    location.pathname.startsWith('/admin') && location.pathname !== '/admin'
+                      ? "text-forest-green-600"
+                      : "text-muted-foreground hover:text-forest-green-600"
+                  )}
+                >
+                  <Shield className="h-4 w-4" />
+                  <span>Admin Panel</span>
+                </button>
+                
+                {/* Admin Dashboard Button - Only for admin users */}
+                <button
+                  onClick={() => handleAdminPanelClick('/admin')}
+                  className={cn(
+                    "flex items-center space-x-2 px-3 py-2 text-sm font-medium transition-colors duration-200",
+                    location.pathname === '/admin'
+                      ? "text-forest-green-600"
+                      : "text-muted-foreground hover:text-forest-green-600"
+                  )}
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  <span>Admin Dashboard</span>
+                </button>
+              </div>
+            )}
+            
             {/* Auth Section */}
             <div className="flex items-center space-x-4">
               {isAuthenticated ? (
-                <div className="relative">
+                <>
+                  {/* Notification Icon */}
+                  <NotificationIcon />
+                  
+                  <div className="relative">
                   <button
                     onClick={() => setUserMenuOpen(!userMenuOpen)}
                     className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent transition-colors"
@@ -136,7 +207,7 @@ const Navbar = () => {
                         onClick={() => setUserMenuOpen(false)}
                         className="block px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"
                       >
-                        Dashboard
+                        {user?.role === 'admin' ? 'Admin Panel' : 'Dashboard'}
                       </Link>
                       <Link
                         to="/profile"
@@ -156,6 +227,7 @@ const Navbar = () => {
                     </motion.div>
                   )}
                 </div>
+                </>
               ) : (
                 <>
                   <Link
@@ -193,7 +265,8 @@ const Navbar = () => {
           className="md:hidden overflow-hidden"
         >
           <div className="py-4 space-y-2">
-            {navItems.map((item) => (
+            {/* Only show navigation items if there are any (not for admin users) */}
+            {navItems.length > 0 && navItems.map((item) => (
               <button
                 key={item.name}
                 onClick={() => {
@@ -211,7 +284,117 @@ const Navbar = () => {
               </button>
             ))}
             
-            <div className="pt-4 space-y-2">
+            {/* Admin Dashboard Button for Mobile - Only for admin users */}
+            {user?.role === 'admin' && (
+              <div className="pt-4 border-t border-border">
+                <button
+                  onClick={() => {
+                    handleAdminPanelClick('/admin')
+                    setIsOpen(false)
+                  }}
+                  className={cn(
+                    "w-full text-left px-3 py-2 text-sm transition-colors",
+                    location.pathname === '/admin'
+                      ? "text-forest-green-600 bg-accent"
+                      : "text-muted-foreground hover:text-forest-green-600 hover:bg-accent"
+                  )}
+                >
+                  <BarChart3 className="h-4 w-4 inline mr-2" />
+                  Admin Dashboard
+                </button>
+              </div>
+            )}
+            
+            {/* Admin Panel Section for Mobile - Only for admin users */}
+            {user?.role === 'admin' && (
+              <div className="pt-4 border-t border-border">
+                <div className="px-3 py-2">
+                  <div className="flex items-center space-x-2 text-sm font-medium text-forest-green-600">
+                    <Shield className="h-4 w-4" />
+                    <span>Admin Panel</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => {
+                      handleAdminPanelClick('/admin/users')
+                      setIsOpen(false)
+                    }}
+                    className={cn(
+                      "w-full text-left px-6 py-2 text-sm transition-colors",
+                      location.pathname === '/admin/users'
+                        ? "text-forest-green-600 bg-accent"
+                        : "text-muted-foreground hover:text-forest-green-600 hover:bg-accent"
+                    )}
+                  >
+                    <Users className="h-4 w-4 inline mr-2" />
+                    Users
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleAdminPanelClick('/admin/products')
+                      setIsOpen(false)
+                    }}
+                    className={cn(
+                      "w-full text-left px-6 py-2 text-sm transition-colors",
+                      location.pathname === '/admin/products'
+                        ? "text-forest-green-600 bg-accent"
+                        : "text-muted-foreground hover:text-forest-green-600 hover:bg-accent"
+                    )}
+                  >
+                    <Package className="h-4 w-4 inline mr-2" />
+                    Products
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleAdminPanelClick('/admin/blog')
+                      setIsOpen(false)
+                    }}
+                    className={cn(
+                      "w-full text-left px-6 py-2 text-sm transition-colors",
+                      location.pathname === '/admin/blog'
+                        ? "text-forest-green-600 bg-accent"
+                        : "text-muted-foreground hover:text-forest-green-600 hover:bg-accent"
+                    )}
+                  >
+                    <FileText className="h-4 w-4 inline mr-2" />
+                    Blog Posts
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleAdminPanelClick('/admin/orders')
+                      setIsOpen(false)
+                    }}
+                    className={cn(
+                      "w-full text-left px-6 py-2 text-sm transition-colors",
+                      location.pathname === '/admin/orders'
+                        ? "text-forest-green-600 bg-accent"
+                        : "text-muted-foreground hover:text-forest-green-600 hover:bg-accent"
+                    )}
+                  >
+                    <ShoppingBag className="h-4 w-4 inline mr-2" />
+                    Orders
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleAdminPanelClick('/admin/settings')
+                      setIsOpen(false)
+                    }}
+                    className={cn(
+                      "w-full text-left px-6 py-2 text-sm transition-colors",
+                      location.pathname === '/admin/settings'
+                        ? "text-forest-green-600 bg-accent"
+                        : "text-muted-foreground hover:text-forest-green-600 hover:bg-accent"
+                    )}
+                  >
+                    <Cog className="h-4 w-4 inline mr-2" />
+                    Settings
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            <div className={navItems.length > 0 ? "pt-4 space-y-2" : "space-y-2"}>
               {isAuthenticated ? (
                 <>
                   <div className="px-3 py-2 border-b border-border">
@@ -240,7 +423,7 @@ const Navbar = () => {
                     onClick={() => setIsOpen(false)}
                     className="block px-3 py-2 text-sm font-medium text-muted-foreground hover:text-forest-green-600 hover:bg-accent rounded-md transition-colors"
                   >
-                    Dashboard
+                    {user?.role === 'admin' ? 'Admin Panel' : 'Dashboard'}
                   </Link>
                   <Link
                     to="/profile"

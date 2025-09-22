@@ -8,7 +8,9 @@
     "dev": "nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "clear:db": "node scripts/clearDb.js",
-    "setup:urban": "node scripts/setupUrbanDB.js"
+    "setup:urban": "node scripts/setupUrbanDB.js",
+    "setup:email": "node scripts/setupEmailService.js",
+    "test:email": "node scripts/testEmailSystem.js"
   },
   "keywords": [
     "plants",
@@ -20,15 +22,22 @@
   "author": "UrbanSprout Team",
   "license": "ISC",
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
     "dotenv": "^17.2.1",
     "express": "^4.21.2",
     "firebase-admin": "^12.6.0",
     "google-auth-library": "^9.14.2",
+    "handlebars": "^4.7.8",
+    "html-to-text": "^9.0.5",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.17.1",
-    "razorpay": "^2.9.6"
+    "nodemailer": "^7.0.6",
+    "nodemailer-html-to-text": "^3.2.0",
+    "razorpay": "^2.9.6",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

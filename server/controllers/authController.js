@@ -2,6 +2,7 @@ const User = require('../models/User');
 const { generateToken } = require('../middlewares/auth');
 const { AppError } = require('../middlewares/errorHandler');
 const { asyncHandler } = require('../middlewares/errorHandler');
+const { sendPasswordResetEmail, sendWelcomeEmail, sendRegistrationEmail } = require('../utils/emailService');
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -41,6 +42,16 @@ const register = asyncHandler(async (req, res, next) => {
 
   // Generate token
   const token = generateToken(user._id);
+
+  // Send registration confirmation email
+  try {
+    // Temporarily disabled email sending due to Gmail authentication issues
+    // await sendRegistrationEmail(user.email, user.name, user.role);
+    console.log(`Registration email would be sent to ${user.email} (disabled)`);
+  } catch (emailError) {
+    console.error('Failed to send registration email:', emailError);
+    // Don't fail registration if email fails
+  }
 
   res.status(201).json({
     success: true,
@@ -326,6 +337,97 @@ const deleteAccount = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Forgot password - send reset email
+// @route   POST /api/auth/forgot-password
+// @access  Public
+const forgotPassword = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return next(new AppError('Email is required', 400));
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase() });
+
+  if (!user) {
+    return next(new AppError('User with this email does not exist', 404));
+  }
+
+  // Generate reset token
+  const crypto = require('crypto');
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  
+  // Hash token and set to user
+  const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+  
+  user.resetPasswordToken = resetTokenHash;
+  user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+  
+  await user.save();
+
+  // Create reset URL
+  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
+
+  // Send password reset email
+  const emailResult = await sendPasswordResetEmail(user.email, resetUrl, user.name);
+
+  if (emailResult.success) {
+    console.log(`Password reset email sent to ${email}`);
+    res.json({
+      success: true,
+      message: 'Password reset link has been sent to your email address. Please check your inbox.',
+    });
+  } else {
+    console.error('Failed to send password reset email:', emailResult.error);
+    
+    // Fallback: provide reset URL directly if email fails
+    res.json({
+      success: true,
+      message: 'Password reset link generated successfully.',
+      resetUrl: resetUrl,
+      instructions: 'Copy and paste this link in your browser to reset your password',
+      emailError: emailResult.error
+    });
+  }
+});
+
+// @desc    Reset password
+// @route   POST /api/auth/reset-password
+// @access  Public
+const resetPassword = asyncHandler(async (req, res, next) => {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    return next(new AppError('Token and password are required', 400));
+  }
+
+  // Hash the token
+  const crypto = require('crypto');
+  const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+  // Find user with valid token
+  const user = await User.findOne({
+    resetPasswordToken: resetTokenHash,
+    resetPasswordExpire: { $gt: Date.now() }
+  });
+
+  if (!user) {
+    return next(new AppError('Invalid or expired reset token', 400));
+  }
+
+  // Update password
+  user.password = password;
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpire = undefined;
+  
+  await user.save();
+
+  res.json({
+    success: true,
+    message: 'Password reset successful. You can now log in with your new password.'
+  });
+});
+
 module.exports = {
   register,
   login,
@@ -335,5 +437,7 @@ module.exports = {
   changePassword,
   updatePreferences,
   logout,
-  deleteAccount
+  deleteAccount,
+  forgotPassword,
+  resetPassword
 };

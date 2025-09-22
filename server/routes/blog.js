@@ -3,6 +3,84 @@ const router = express.Router()
 const Blog = require('../models/Blog')
 const auth = require('../middleware/auth')
 
+// GET /api/blog/stats - Get blog statistics including top contributors
+router.get('/stats', async (req, res) => {
+  try {
+    // Get total members count (users who have created at least one post)
+    const totalMembers = await Blog.distinct('authorEmail').then(emails => emails.length)
+    
+    // Get active today count (users who created posts today)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const activeToday = await Blog.distinct('authorEmail', {
+      createdAt: { $gte: today }
+    }).then(emails => emails.length)
+    
+    res.json({
+      success: true,
+      data: {
+        totalMembers,
+        activeToday
+      }
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching blog stats',
+      error: error.message
+    })
+  }
+})
+
+// GET /api/blog/top-contributors - Get top contributors by post count
+router.get('/top-contributors', async (req, res) => {
+  try {
+    const { limit = 4 } = req.query
+    
+    // Aggregate to get top contributors by post count
+    const topContributors = await Blog.aggregate([
+      {
+        $group: {
+          _id: '$authorEmail',
+          authorName: { $first: '$author' },
+          postCount: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { postCount: -1 }
+      },
+      {
+        $limit: parseInt(limit)
+      },
+      {
+        $project: {
+          _id: 0,
+          name: '$authorName',
+          email: '$_id',
+          postCount: 1
+        }
+      }
+    ])
+    
+    // Add rank numbers
+    const contributorsWithRank = topContributors.map((contributor, index) => ({
+      ...contributor,
+      rank: index + 1
+    }))
+    
+    res.json({
+      success: true,
+      data: contributorsWithRank
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching top contributors',
+      error: error.message
+    })
+  }
+})
+
 // GET /api/blog/search - Search blog posts
 router.get('/search', async (req, res) => {
   try {
@@ -28,11 +106,19 @@ router.get('/search', async (req, res) => {
     
     const searchRegex = new RegExp(q.trim(), 'i')
     const blogs = await Blog.find({
-      $or: [
-        { title: searchRegex },
-        { content: searchRegex },
-        { tags: { $in: [searchRegex] } },
-        { author: searchRegex }
+      $and: [
+        {
+          $or: [
+            { title: searchRegex },
+            { content: searchRegex },
+            { tags: { $in: [searchRegex] } },
+            { author: searchRegex }
+          ]
+        },
+        {
+          status: 'published',
+          approvalStatus: 'approved'
+        }
       ]
     })
       .sort(sortOption)
@@ -73,8 +159,14 @@ router.get('/', async (req, res) => {
     const limitNum = parseInt(limit)
     const skip = (pageNum - 1) * limitNum
     
-    const totalPosts = await Blog.countDocuments()
-    const blogs = await Blog.find()
+    const totalPosts = await Blog.countDocuments({ 
+      status: 'published', 
+      approvalStatus: 'approved' 
+    })
+    const blogs = await Blog.find({ 
+      status: 'published', 
+      approvalStatus: 'approved' 
+    })
       .sort(sortOption)
       .skip(skip)
       .limit(limitNum)
@@ -150,6 +242,42 @@ router.get('/mine', auth, async (req, res) => {
     })
   }
 })
+
+// GET /api/blog/my-posts - Get user's posts with approval status
+router.get('/my-posts', auth, async (req, res) => {
+  try {
+    const { page, limit, skip } = req.pagination || { page: 1, limit: 10, skip: 0 };
+
+    const posts = await Blog.find({ authorId: req.user._id })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await Blog.countDocuments({ authorId: req.user._id });
+
+    res.json({
+      success: true,
+      data: {
+        posts,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching user posts',
+      error: error.message
+    });
+  }
+});
 
 // GET /api/blog/saved - Get posts bookmarked by current user
 router.get('/saved', auth, async (req, res) => {
@@ -267,14 +395,16 @@ router.post('/', auth, async (req, res) => {
       likes: [],
       bookmarks: [],
       shares: [],
-      comments: []
+      comments: [],
+      status: 'pending_approval',
+      approvalStatus: 'pending'
     })
     
     const savedBlog = await newBlog.save()
     
     res.status(201).json({
       success: true,
-      message: 'Blog post created successfully',
+      message: 'Thank you for your submission! Your blog post has been sent for review. We will notify you once it\'s approved and published.',
       data: savedBlog
     })
   } catch (error) {
@@ -565,6 +695,52 @@ router.delete('/:id', auth, async (req, res) => {
       success: false,
       message: 'Error deleting blog post',
       error: error.message
+    })
+  }
+})
+
+// Get top contributors
+router.get('/top-contributors', async (req, res) => {
+  try {
+    // Aggregate posts by author to get top contributors
+    const topContributors = await Blog.aggregate([
+      {
+        $group: {
+          _id: '$author',
+          postCount: { $sum: 1 },
+          lastPost: { $max: '$createdAt' }
+        }
+      },
+      {
+        $match: {
+          _id: { $ne: null, $ne: '' } // Exclude null/empty authors
+        }
+      },
+      {
+        $sort: { postCount: -1 }
+      },
+      {
+        $limit: 4
+      },
+      {
+        $project: {
+          name: '$_id',
+          postCount: 1,
+          lastPost: 1,
+          _id: 0
+        }
+      }
+    ])
+
+    res.json({
+      success: true,
+      data: topContributors
+    })
+  } catch (error) {
+    console.error('Error fetching top contributors:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch top contributors'
     })
   }
 })

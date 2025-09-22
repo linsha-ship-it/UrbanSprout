@@ -5,6 +5,7 @@ import { Search, Filter, Heart, ShoppingCart, Star, Grid, List, X, MapPin, Credi
 import { useAuth } from '../contexts/AuthContext'
 import { apiCall } from '../utils/api'
 import { initializeRazorpayPayment } from '../config/razorpay'
+import ProductImageSlideshow from '../components/ProductImageSlideshow'
 
 const Store = () => {
   console.log('Store component rendering...')
@@ -292,11 +293,11 @@ const Store = () => {
         id: productId,
         _id: productId, // Keep both for compatibility
         name: product.name,
-        price: product.price,
-        image: product.image,
+        price: product.discountPrice || product.regularPrice || product.price || 0,
+        image: product.images?.[0] || product.image,
         category: product.category,
         stock: product.stock,
-        inStock: product.inStock,
+        inStock: product.stock > 0,
         quantity: 1
       };
       newCart = [...cart, cartItem]
@@ -678,11 +679,15 @@ const Store = () => {
   // Filter products based on category, price, and search
   const filteredProducts = (products || []).filter(product => {
     const categoryMatch = selectedCategory === 'all' || product.category === selectedCategory
-    const priceMatch = (!minPrice || product.price >= parseInt(minPrice)) && 
-                      (!maxPrice || product.price <= parseInt(maxPrice))
+    
+    // Use currentPrice (discountPrice if available, otherwise regularPrice)
+    const currentPrice = product.discountPrice || product.regularPrice || product.price || 0
+    const priceMatch = (!minPrice || currentPrice >= parseInt(minPrice)) && 
+                      (!maxPrice || currentPrice <= parseInt(maxPrice))
+    
     const searchMatch = !searchQuery || 
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase()))
     return categoryMatch && priceMatch && searchMatch
   })
 
@@ -923,21 +928,12 @@ const Store = () => {
                     highlightedProductId === product._id ? 'ring-4 ring-blue-500 ring-opacity-50 shadow-2xl' : ''
                   }`}
                 >
-                  {/* Product Image */}
-                  <div className={`relative bg-gradient-to-br from-forest-green-100 to-forest-green-200 flex items-center justify-center ${
-                    viewMode === 'list' ? 'w-48 h-48' : 'h-48'
-                  }`}>
-                    <img 
-                      src={product.image} 
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.style.display = 'none'
-                        e.target.nextSibling.style.display = 'block'
-                      }}
-                    />
-                    <div className="text-6xl hidden">{product.name.charAt(0)}</div>
-                    
+                  {/* Product Image Slideshow */}
+                  <ProductImageSlideshow 
+                    images={product.images || [product.image]} 
+                    productName={product.name}
+                    className={`${viewMode === 'list' ? 'w-48 h-48' : 'h-48'}`}
+                  >
                     {/* Badges */}
                     <div className="absolute top-3 left-3 flex flex-col space-y-1">
                       {product.isNew && (
@@ -962,8 +958,8 @@ const Store = () => {
                       }`}
                     >
                       <Heart className={`h-4 w-4 ${isInWishlist(product._id) ? 'fill-current' : 'text-forest-green-600'}`} />
-                      </button>
-                  </div>
+                    </button>
+                  </ProductImageSlideshow>
 
                   {/* Product Info */}
                   <div className="p-4 flex-1">
@@ -1012,25 +1008,30 @@ const Store = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <span className="text-xl font-bold text-forest-green-800">
-                          ₹{product.price.toLocaleString()}
+                          ₹{(product.discountPrice || product.regularPrice || product.price || 0).toLocaleString()}
                         </span>
-                        {product.originalPrice && (
+                        {product.discountPrice && product.regularPrice && (
                           <span className="text-sm text-forest-green-400 line-through">
-                            ₹{product.originalPrice.toLocaleString()}
+                            ₹{product.regularPrice.toLocaleString()}
+                          </span>
+                        )}
+                        {product.discountPrice && product.regularPrice && (
+                          <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">
+                            {Math.round(((product.regularPrice - product.discountPrice) / product.regularPrice) * 100)}% OFF
                           </span>
                         )}
                       </div>
                       
                       <button
                         onClick={() => addToCart(product)}
-                        disabled={!product.inStock}
+                        disabled={product.stock <= 0}
                         className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          product.inStock
+                          product.stock > 0
                             ? 'bg-forest-green-500 text-cream-100 hover:bg-forest-green-600'
                             : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         }`}
                       >
-                        {product.inStock ? (
+                        {product.stock > 0 ? (
                           <div className="flex items-center">
                             <ShoppingCart className="h-4 w-4 mr-2" />
                             Add to Cart

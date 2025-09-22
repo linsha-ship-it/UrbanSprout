@@ -7,6 +7,8 @@ import Navbar from './components/layout/Navbar'
 import Home from './pages/Home'
 import Login from './pages/auth/Login'
 import Signup from './pages/auth/Signup'
+import AdminRegister from './pages/auth/AdminRegister'
+import ResetPassword from './pages/auth/ResetPassword'
 import PlantSuggestion from './pages/PlantSuggestion'
 import Unauthorized from './pages/Unauthorized'
 import Admin from './pages/Admin'
@@ -14,15 +16,30 @@ import Blog from './pages/Blog'
 import Store from './pages/Store'
 import Profile from './pages/Profile'
 
+// Import admin components
+import AdminLayout from './components/admin/AdminLayout'
+import UnifiedAdminDashboard from './pages/admin/UnifiedAdminDashboard'
+import AdminUsers from './pages/admin/AdminUsers'
+import AdminProducts from './pages/admin/AdminProducts'
+import AdminBlogPosts from './pages/admin/AdminBlogPosts'
+import AdminOrders from './pages/admin/AdminOrders'
+import AdminSettings from './pages/admin/AdminSettings'
+
 // Import dashboard components
 import AdminDashboard from './pages/dashboard/AdminDashboard'
 import BeginnerDashboard from './pages/dashboard/BeginnerDashboard'
 import ExpertDashboard from './pages/dashboard/ExpertDashboard'
 import VendorDashboard from './pages/dashboard/VendorDashboard'
 
+// Import My Garden Journal components
+import MyGardenJournal from './pages/MyGardenJournal'
+import PlantDetail from './pages/PlantDetail'
+
 // Protected Route Component
-const ProtectedRoute = ({ children, requiredRole = null, allowedRoles = [] }) => {
+const ProtectedRoute = ({ children, requiredRole = null, allowedRoles = [], redirectToSignup = false }) => {
   const { user, loading } = useAuth()
+
+  console.log('ProtectedRoute - user:', user, 'loading:', loading, 'requiredRole:', requiredRole);
 
   if (loading) {
     return (
@@ -33,17 +50,21 @@ const ProtectedRoute = ({ children, requiredRole = null, allowedRoles = [] }) =>
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />
+    console.log('ProtectedRoute - No user, redirecting to login');
+    return <Navigate to={redirectToSignup ? "/signup" : "/login"} replace />
   }
 
   if (requiredRole && user.role !== requiredRole) {
+    console.log('ProtectedRoute - Role mismatch. User role:', user.role, 'Required:', requiredRole);
     return <Navigate to="/unauthorized" replace />
   }
 
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    console.log('ProtectedRoute - User role not in allowed roles. User role:', user.role, 'Allowed:', allowedRoles);
     return <Navigate to="/unauthorized" replace />
   }
 
+  console.log('ProtectedRoute - Access granted');
   return children
 }
 
@@ -70,21 +91,15 @@ const Dashboard = () => {
   }
 }
 
-const LoadingScreen = () => (
-  <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-    <div className="text-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-      <p className="text-gray-600">Loading UrbanSprout...</p>
-    </div>
-  </div>
-)
-
-// Main App Component
 const App = () => {
   const { user, loading } = useAuth()
 
   if (loading) {
-    return <LoadingScreen />
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
+      </div>
+    )
   }
 
   return (
@@ -94,35 +109,81 @@ const App = () => {
         <div className="pt-16">
           <Routes>
           {/* Public Routes */}
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+          <Route path="/admin-register" element={<AdminRegister />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/community" element={<Blog />} />
           <Route path="/store" element={<Store />} />
           <Route path="/plant-suggestion" element={<PlantSuggestion />} />
           <Route path="/unauthorized" element={<Unauthorized />} />
-          
-          {/* Profile Route - Protected */}
+
+          {/* Protected Routes */}
           <Route path="/profile" element={
             <ProtectedRoute>
               <Profile />
             </ProtectedRoute>
           } />
-          
-          {/* Protected Routes */}
-          <Route path="/admin" element={
-            <ProtectedRoute requiredRole="admin">
-              <Admin />
-            </ProtectedRoute>
-          } />
-          
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />
             </ProtectedRoute>
           } />
-          
+          <Route path="/my-garden-journal" element={
+            <ProtectedRoute>
+              <MyGardenJournal />
+            </ProtectedRoute>
+          } />
+          <Route path="/plant-detail/:plantId" element={
+            <ProtectedRoute>
+              <PlantDetail />
+            </ProtectedRoute>
+          } />
+
+          {/* Admin Routes */}
+          <Route path="/admin" element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/users" element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminLayout>
+                <AdminUsers />
+              </AdminLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/products" element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminLayout>
+                <AdminProducts />
+              </AdminLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/blog" element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminLayout>
+                <AdminBlogPosts />
+              </AdminLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/orders" element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminLayout>
+                <AdminOrders />
+              </AdminLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/settings" element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminLayout>
+                <AdminSettings />
+              </AdminLayout>
+            </ProtectedRoute>
+          } />
+
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -144,10 +144,10 @@ const PlantChatbot = ({ onClose, user }) => {
 
   const getPlantIcon = (type) => {
     switch (type) {
-      case 'vegetable': return '🥬'
-      case 'fruit': return '🍓'
-      case 'herb': return '🌿'
-      default: return '🌱'
+      case 'vegetable': return <span className="text-pink-500 font-bold text-lg">V</span>
+      case 'fruit': return <span className="text-pink-500 font-bold text-lg">F</span>
+      case 'herb': return <span className="text-pink-500 font-bold text-lg">H</span>
+      default: return <span className="text-pink-500 font-bold text-lg">P</span>
     }
   }
 
@@ -294,6 +294,13 @@ const PlantChatbot = ({ onClose, user }) => {
                                       if (!existing.includes(plant.name)) {
                                         const updated = [...existing, plant.name]
                                         localStorage.setItem(key, JSON.stringify(updated))
+                                        
+                                        // Also save plant image
+                                        const imageKey = `plant_images_${user?.id || user?.uid || user?.email || 'guest'}`
+                                        const existingImages = JSON.parse(localStorage.getItem(imageKey) || '{}')
+                                        existingImages[plant.name] = plant.image || '/api/placeholder/300/200'
+                                        localStorage.setItem(imageKey, JSON.stringify(existingImages))
+                                        
                                         alert(`Added ${plant.name} to your garden! 🌱`)
                                       } else {
                                         alert(`${plant.name} is already in your garden!`)
@@ -331,7 +338,6 @@ const PlantChatbot = ({ onClose, user }) => {
                               <h6 className="text-sm font-medium text-blue-800">{item.name}</h6>
                               <p className="text-xs text-blue-600">{item.description}</p>
                             </div>
-                            <span className="text-sm font-semibold text-blue-700">{item.price}</span>
                           </div>
                         </motion.div>
                       ))}

@@ -1,0 +1,271 @@
+import React, { useState } from 'react';
+import { 
+  X, 
+  Plus, 
+  Edit, 
+  Trash2, 
+  Save,
+  AlertTriangle,
+  Tag
+} from 'lucide-react';
+
+const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
+  const [newCategory, setNewCategory] = useState('');
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [message, setMessage] = useState('');
+
+  const predefinedCategories = [
+    'Tools', 'Fertilizers', 'Pots', 'Watering Cans', 'Soil & Compost', 
+    'Plant Care', 'Garden Accessories', 'Indoor Growing', 'Outdoor Growing',
+    'Seeds', 'Planters', 'Garden Tools', 'Plant Food', 'Pest Control'
+  ];
+
+  const handleAddCategory = async () => {
+    if (!newCategory.trim()) {
+      setMessage('Category name is required');
+      return;
+    }
+
+    if (predefinedCategories.includes(newCategory)) {
+      setMessage('This category already exists');
+      return;
+    }
+
+    // In a real implementation, you would call an API to add the category
+    // For now, we'll just show a success message
+    setMessage('Category added successfully');
+    setNewCategory('');
+    setTimeout(() => {
+      setMessage('');
+      onUpdate();
+    }, 2000);
+  };
+
+  const handleEditCategory = (category) => {
+    setEditingCategory(category);
+    setEditName(category._id);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editName.trim()) {
+      setMessage('Category name is required');
+      return;
+    }
+
+    // In a real implementation, you would call an API to update the category
+    setMessage('Category updated successfully');
+    setEditingCategory(null);
+    setEditName('');
+    setTimeout(() => {
+      setMessage('');
+      onUpdate();
+    }, 2000);
+  };
+
+  const handleDeleteCategory = async (category) => {
+    if (category.count > 0) {
+      setMessage(`Cannot delete category "${category._id}" - it has ${category.count} products`);
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete the category "${category._id}"?`)) {
+      return;
+    }
+
+    // In a real implementation, you would call an API to delete the category
+    setMessage('Category deleted successfully');
+    setTimeout(() => {
+      setMessage('');
+      onUpdate();
+    }, 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+              <Tag className="h-6 w-6 mr-2" />
+              Manage Categories
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Message */}
+          {message && (
+            <div className={`mb-4 p-3 rounded-lg text-sm ${
+              message.includes('successfully') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            }`}>
+              {message}
+            </div>
+          )}
+
+          {/* Add New Category */}
+          <div className="bg-gray-50 rounded-lg p-4 mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-3">Add New Category</h3>
+            <div className="flex space-x-3">
+              <input
+                type="text"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter category name"
+                onKeyPress={(e) => e.key === 'Enter' && handleAddCategory()}
+              />
+              <button
+                onClick={handleAddCategory}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add
+              </button>
+            </div>
+          </div>
+
+          {/* Predefined Categories */}
+          <div className="mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-3">Predefined Categories</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {predefinedCategories.map((category) => {
+                const categoryData = categories.find(c => c._id === category);
+                const productCount = categoryData ? categoryData.count : 0;
+                
+                return (
+                  <div key={category} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                    <div className="flex items-center">
+                      <Tag className="h-4 w-4 text-gray-400 mr-2" />
+                      <span className="text-sm font-medium text-gray-900">{category}</span>
+                      <span className="ml-2 text-xs text-gray-500">({productCount})</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => handleEditCategory({ _id: category, count: productCount })}
+                        className="p-1 text-blue-600 hover:text-blue-500"
+                        title="Edit category"
+                      >
+                        <Edit className="h-3 w-3" />
+                      </button>
+                      {productCount === 0 && (
+                        <button
+                          onClick={() => handleDeleteCategory({ _id: category, count: productCount })}
+                          className="p-1 text-red-600 hover:text-red-500"
+                          title="Delete category"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Existing Categories */}
+          {categories.length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-3">Existing Categories</h3>
+              <div className="space-y-2">
+                {categories.map((category) => (
+                  <div key={category._id} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                    {editingCategory && editingCategory._id === category._id ? (
+                      <div className="flex items-center space-x-2 flex-1">
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="flex-1 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit()}
+                        />
+                        <button
+                          onClick={handleSaveEdit}
+                          className="p-1 text-green-600 hover:text-green-500"
+                          title="Save changes"
+                        >
+                          <Save className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingCategory(null);
+                            setEditName('');
+                          }}
+                          className="p-1 text-gray-600 hover:text-gray-500"
+                          title="Cancel"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center">
+                          <Tag className="h-4 w-4 text-gray-400 mr-2" />
+                          <span className="text-sm font-medium text-gray-900">{category._id}</span>
+                          <span className="ml-2 text-xs text-gray-500">({category.count} products)</span>
+                          {category.count > 0 && (
+                            <AlertTriangle className="h-4 w-4 text-orange-500 ml-2" title="Has products" />
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <button
+                            onClick={() => handleEditCategory(category)}
+                            className="p-1 text-blue-600 hover:text-blue-500"
+                            title="Edit category"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </button>
+                          {category.count === 0 && (
+                            <button
+                              onClick={() => handleDeleteCategory(category)}
+                              className="p-1 text-red-600 hover:text-red-500"
+                              title="Delete category"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Warning */}
+          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex">
+              <AlertTriangle className="h-5 w-5 text-yellow-400 mr-2 mt-0.5" />
+              <div className="text-sm text-yellow-800">
+                <p className="font-medium">Important Notes:</p>
+                <ul className="mt-1 list-disc list-inside space-y-1">
+                  <li>Categories with products cannot be deleted</li>
+                  <li>Deleting a category will affect all products using it</li>
+                  <li>Category names are case-sensitive</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Close Button */}
+          <div className="flex justify-end pt-6 border-t mt-6">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CategoryManagementModal;

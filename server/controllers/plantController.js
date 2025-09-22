@@ -207,3 +207,10 @@ module.exports = {
   getAllPlants,
   getPlantById
 };
+
+
+
+
+
+
+
