@@ -5,7 +5,7 @@ const createTransporter = () => {
   // For development, we'll use Gmail SMTP
   // In production, you should use a proper email service like SendGrid, AWS SES, etc.
   
-  const emailUser = process.env.EMAIL_USER || 'linshanadir16@gmail.com';
+  const emailUser = process.env.EMAIL_USER || 'noreply@urbansprout.com';
   const emailPass = process.env.EMAIL_PASS || 'rfmq suds kmkc kifv';
   
   // Remove any spaces from the app password (common issue)
@@ -16,6 +16,12 @@ const createTransporter = () => {
     passLength: cleanEmailPass.length,
     passStartsWith: cleanEmailPass.substring(0, 4) + '...'
   });
+  
+  // Check if using placeholder credentials
+  if (emailPass === 'your-app-password' || emailPass === 'your_app_password' || cleanEmailPass.length < 10) {
+    console.log('⚠️  Using placeholder email credentials - emails will be simulated');
+    return null; // Return null to indicate simulation mode
+  }
   
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
@@ -350,7 +356,42 @@ const sendRegistrationEmail = async (email, userName, userRole = 'beginner') => 
 // Send blog post rejection email
 const sendBlogRejectionEmail = async (email, userName, blogTitle, rejectionReason) => {
   try {
+    // Validate email address
+    if (!email || !email.includes('@')) {
+      console.error('Invalid email address:', email);
+      return {
+        success: false,
+        error: 'Invalid email address'
+      };
+    }
+
+    // Check if email is configured
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+    
+    if (!emailUser || !emailPass || emailUser === 'your-email@gmail.com' || emailPass === 'your-app-password') {
+      console.log('Email not configured, simulating email send...');
+      console.log(`Would send blog rejection email to: ${email}`);
+      console.log(`Subject: Blog Post Feedback - UrbanSprout`);
+      console.log(`Blog Title: ${blogTitle}`);
+      console.log(`Rejection Reason: ${rejectionReason}`);
+      return { success: true, messageId: 'simulated-' + Date.now() };
+    }
+
+    console.log(`Sending blog rejection email to: ${email}`);
+    console.log(`Email configuration:`, {
+      user: emailUser,
+      passLength: emailPass.length,
+      passStartsWith: emailPass.substring(0, 4) + '...'
+    });
+
     const transporter = createTransporter();
+    
+    // If transporter is null, it means we're in simulation mode
+    if (!transporter) {
+      console.log('📧 Email simulation mode - no real email sent');
+      return { success: true, messageId: 'simulated-' + Date.now() };
+    }
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -443,7 +484,12 @@ const sendBlogRejectionEmail = async (email, userName, blogTitle, rejectionReaso
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('Blog rejection email sent:', info.messageId);
+    console.log('✅ Blog rejection email sent successfully:', info.messageId);
+    console.log('📧 Email details:', {
+      to: email,
+      subject: mailOptions.subject,
+      messageId: info.messageId
+    });
     
     return {
       success: true,
@@ -451,10 +497,28 @@ const sendBlogRejectionEmail = async (email, userName, blogTitle, rejectionReaso
     };
 
   } catch (error) {
-    console.error('Error sending blog rejection email:', error);
+    console.error('❌ Error sending blog rejection email:', error);
+    console.error('📧 Email details that failed:', {
+      to: email,
+      subject: 'Blog Post Feedback - UrbanSprout',
+      error: error.message,
+      code: error.code
+    });
+    
+    // Provide specific error messages for common issues
+    let errorMessage = error.message;
+    if (error.code === 'EAUTH') {
+      errorMessage = 'Gmail authentication failed. Please check your EMAIL_USER and EMAIL_PASS in .env file. Make sure you\'re using an App Password, not your regular Gmail password.';
+    } else if (error.code === 'ECONNECTION') {
+      errorMessage = 'Connection to Gmail failed. Please check your internet connection.';
+    } else if (error.code === 'EENVELOPE') {
+      errorMessage = 'Invalid email address or recipient.';
+    }
+    
     return {
       success: false,
-      error: error.message
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error : undefined
     };
   }
 };
@@ -613,7 +677,9 @@ const sendOrderConfirmationEmail = async (email, userName, orderDetails) => {
               </div>
               <div class="order-item">
                 <span><strong>Payment Status:</strong></span>
-                <span style="color: #10B981; font-weight: bold;">✅ Paid</span>
+                <span style="color: ${orderDetails.paymentStatus === 'Pending - Pay on Delivery' ? '#F59E0B' : '#10B981'}; font-weight: bold;">
+                  ${orderDetails.paymentStatus === 'Pending - Pay on Delivery' ? '💰 Pay on Delivery' : '✅ Paid'}
+                </span>
               </div>
               <div class="order-item">
                 <span><strong>Total Amount:</strong></span>
@@ -642,6 +708,15 @@ const sendOrderConfirmationEmail = async (email, userName, orderDetails) => {
                 <span>${orderDetails.estimatedDelivery}</span>
               </div>
             </div>
+            
+            ${orderDetails.paymentStatus === 'Pending - Pay on Delivery' ? `
+            <div class="order-details" style="background: #FEF3C7; border: 1px solid #F59E0B;">
+              <h4>💰 Cash on Delivery</h4>
+              <p><strong>Important:</strong> Please have the exact amount ready when your order arrives.</p>
+              <p><strong>Amount to Pay:</strong> $${orderDetails.totalAmount}</p>
+              <p>Our delivery person will collect the payment upon delivery. Please ensure someone is available to receive the order and make the payment.</p>
+            </div>
+            ` : ''}
             
             <p>We'll send you another email when your order ships with tracking information.</p>
             
@@ -677,7 +752,7 @@ const sendOrderConfirmationEmail = async (email, userName, orderDetails) => {
         Order Details:
         - Order ID: ${orderDetails.orderId}
         - Order Date: ${new Date(orderDetails.orderDate).toLocaleDateString()}
-        - Payment Status: Paid
+        - Payment Status: ${orderDetails.paymentStatus === 'Pending - Pay on Delivery' ? 'Pay on Delivery' : 'Paid'}
         - Total Amount: $${orderDetails.totalAmount}
         
         Items Ordered:
@@ -686,6 +761,14 @@ const sendOrderConfirmationEmail = async (email, userName, orderDetails) => {
         Shipping Information:
         - Address: ${orderDetails.shippingAddress}
         - Estimated Delivery: ${orderDetails.estimatedDelivery}
+        
+        ${orderDetails.paymentStatus === 'Pending - Pay on Delivery' ? `
+        IMPORTANT - Cash on Delivery:
+        - Amount to Pay: $${orderDetails.totalAmount}
+        - Please have the exact amount ready when your order arrives
+        - Our delivery person will collect payment upon delivery
+        - Ensure someone is available to receive the order and make payment
+        ` : ''}
         
         We'll send you another email when your order ships with tracking information.
         
@@ -1038,7 +1121,7 @@ const sendOrderStatusUpdateEmail = async (email, userName, orderDetails) => {
     `;
 
     const mailOptions = {
-      from: `"UrbanSprout Store" <${process.env.EMAIL_USER || 'lxiao0391@gmail.com'}>`,
+      from: `"UrbanSprout Store" <${process.env.EMAIL_USER || 'noreply@urbansprout.com'}>`,
       to: email,
       subject: `📦 Order Update: ${orderDetails.status.charAt(0).toUpperCase() + orderDetails.status.slice(1)} - UrbanSprout`,
       html: htmlContent,
@@ -1190,7 +1273,7 @@ const sendAdminVerificationEmail = async (email, userName, verificationType, det
     `;
 
     const mailOptions = {
-      from: `"UrbanSprout Admin Team" <${process.env.EMAIL_USER || 'lxiao0391@gmail.com'}>`,
+      from: `"UrbanSprout Admin Team" <${process.env.EMAIL_USER || 'noreply@urbansprout.com'}>`,
       to: email,
       subject: `${verification.icon} ${verification.title} - UrbanSprout`,
       html: htmlContent,

@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Product = require('../models/Product');
 const Order = require('../models/Order');
+const User = require('../models/User');
 const auth = require('../middleware/auth');
+const { sendOrderConfirmationEmail } = require('../utils/emailService');
 const {
   createRazorpayOrder,
   verifyPayment,
@@ -227,6 +229,39 @@ router.post('/orders', auth, async (req, res) => {
     });
 
     await order.save();
+
+    // Send order confirmation email (only to non-admin users)
+    try {
+      const user = await User.findById(req.user._id);
+      if (user && user.email && user.role !== 'admin') {
+        const orderDetails = {
+          orderId: order._id.toString().slice(-8),
+          orderNumber: order.orderNumber,
+          orderDate: order.createdAt,
+          totalAmount: order.total,
+          items: order.items.map(item => ({
+            name: item.name || 'Plant',
+            quantity: item.quantity,
+            price: item.price
+          })),
+          shippingAddress: `${order.shippingAddress.fullName}, ${order.shippingAddress.address}, ${order.shippingAddress.city}, ${order.shippingAddress.state || order.shippingAddress.city}, ${order.shippingAddress.postalCode}, ${order.shippingAddress.country}`,
+          estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+          paymentMethod: order.paymentMethod || 'Cash on Delivery',
+          paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'Pending - Pay on Delivery' : 'Paid'
+        };
+
+        // Send order confirmation email
+        await sendOrderConfirmationEmail(user.email, user.name, orderDetails);
+        console.log(`✅ Order confirmation email sent to ${user.email} (${user.role})`);
+      } else if (user && user.role === 'admin') {
+        console.log(`ℹ️ Skipping email for admin user: ${user.email} (${user.role})`);
+      } else {
+        console.log(`⚠️ Could not send email - user not found or no email: ${req.user._id}`);
+      }
+    } catch (emailError) {
+      console.error('❌ Failed to send order confirmation email:', emailError);
+      // Don't fail the order creation if email fails
+    }
 
     res.status(201).json({
       success: true,

@@ -578,7 +578,7 @@ const Store = () => {
         shipping: 0,
         tax: 0,
         total: orderData.total,
-        status: 'Pending',
+        status: 'pending',
         notes: 'Cash on Delivery order'
       };
 

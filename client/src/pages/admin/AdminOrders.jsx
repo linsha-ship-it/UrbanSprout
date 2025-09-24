@@ -17,7 +17,6 @@ import {
   DollarSign,
   Edit,
   Mail,
-  FileText,
   Download,
   MapPin,
   Phone,
@@ -187,30 +186,6 @@ const AdminOrders = () => {
     }
   };
 
-  const generateInvoice = async (orderId) => {
-    try {
-      const response = await apiCall(`/admin/orders/${orderId}/invoice`, {
-        method: 'GET'
-      });
-      
-      if (response.success) {
-        // Create download link
-        const blob = new Blob([response.data], { type: 'application/pdf' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `invoice-${orderId}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        setMessage('Invoice generated successfully');
-      }
-    } catch (error) {
-      console.error('Error generating invoice:', error);
-      setMessage('Error generating invoice');
-    }
-  };
 
   const markPaymentConfirmed = async (orderId) => {
     try {
@@ -570,13 +545,6 @@ const AdminOrders = () => {
                             <option value="returned">Returned</option>
                           </select>
                           <button
-                            onClick={() => generateInvoice(order._id)}
-                            className="text-green-600 hover:text-green-500 p-1"
-                            title="Generate invoice"
-                          >
-                            <FileText className="h-4 w-4" />
-                          </button>
-                          <button
                             onClick={() => {
                               setSelectedOrder(order);
                               setShowEmailModal(true);
@@ -803,13 +771,6 @@ const AdminOrders = () => {
 
                 {/* Action Buttons */}
                 <div className="mt-6 flex justify-end space-x-3">
-                  <button
-                    onClick={() => generateInvoice(selectedOrder._id)}
-                    className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Generate Invoice
-                  </button>
                   <button
                     onClick={() => {
                       setShowOrderDetails(false);

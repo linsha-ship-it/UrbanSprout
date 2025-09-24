@@ -360,7 +360,7 @@ const updateOrderStatus = asyncHandler(async (req, res, next) => {
     return next(new AppError('Invalid status', 400));
   }
 
-  const order = await Order.findById(req.params.id);
+  const order = await Order.findById(req.params.id).populate('user', 'name email role');
 
   if (!order) {
     return next(new AppError('Order not found', 404));
@@ -409,30 +409,38 @@ const updateOrderStatus = asyncHandler(async (req, res, next) => {
 
     console.log(`Order status notification sent to user ${order.user.email}`);
 
-    // Send professional email notification for order status update
+    // Send professional email notification for order status update (only to non-admin users)
     try {
-      const orderDetails = {
-        orderId: order.orderNumber || order._id.toString().slice(-8),
-        status: status,
-        updatedAt: new Date(),
-        trackingNumber: order.trackingNumber || null,
-        carrier: order.shipping?.carrier || 'Standard Shipping',
-        estimatedDelivery: order.shipping?.estimatedDelivery || '3-5 business days'
-      };
+      if (order.user && order.user.email && order.user.role !== 'admin') {
+        const orderDetails = {
+          orderId: order.orderNumber || order._id.toString().slice(-8),
+          status: status,
+          updatedAt: new Date(),
+          trackingNumber: order.trackingNumber || null,
+          carrier: order.shipping?.carrier || 'Standard Shipping',
+          estimatedDelivery: order.shipping?.estimatedDelivery || '3-5 business days'
+        };
 
-      await sendOrderStatusUpdateEmail(order.user.email, order.user.name, orderDetails);
-      console.log(`Professional order status update email sent to ${order.user.email}`);
+        await sendOrderStatusUpdateEmail(order.user.email, order.user.name, orderDetails);
+        console.log(`✅ Professional order status update email sent to ${order.user.email} (${order.user.role})`);
+      } else if (order.user && order.user.role === 'admin') {
+        console.log(`ℹ️ Skipping order status email for admin user: ${order.user.email} (${order.user.role})`);
+      } else {
+        console.log(`⚠️ Could not send order status email - user not found or no email`);
+      }
     } catch (emailError) {
       console.error('Error sending order status update email:', emailError);
-      // Fallback to basic email notification
+      // Fallback to basic email notification (only for non-admin users)
       try {
-        await sendEmailNotification(
-          order.user.email,
-          `Order Status Update - ${status.toUpperCase()}`,
-          `Your order #${order.orderNumber || order._id.toString().slice(-8)} status has been updated to: ${status.toUpperCase()}`,
-          order.user.name || 'Customer'
-        );
-        console.log(`Fallback email notification sent to ${order.user.email}`);
+        if (order.user && order.user.email && order.user.role !== 'admin') {
+          await sendEmailNotification(
+            order.user.email,
+            `Order Status Update - ${status.toUpperCase()}`,
+            `Your order #${order.orderNumber || order._id.toString().slice(-8)} status has been updated to: ${status.toUpperCase()}`,
+            order.user.name || 'Customer'
+          );
+          console.log(`✅ Fallback email notification sent to ${order.user.email} (${order.user.role})`);
+        }
       } catch (fallbackError) {
         console.error('Error sending fallback email notification:', fallbackError);
       }
@@ -615,10 +623,22 @@ const rejectBlogPost = asyncHandler(async (req, res, next) => {
 
   // Send rejection email to the author
   try {
-    await sendBlogRejectionEmail(post.authorEmail, post.author, post.title, reason.trim());
-    console.log(`Blog rejection email sent to ${post.authorEmail}`);
+    console.log(`Attempting to send blog rejection email to: ${post.authorEmail}`);
+    console.log(`Blog post details:`, {
+      title: post.title,
+      author: post.author,
+      reason: reason.trim()
+    });
+    
+    const emailResult = await sendBlogRejectionEmail(post.authorEmail, post.author, post.title, reason.trim());
+    
+    if (emailResult.success) {
+      console.log(`✅ Blog rejection email sent successfully to ${post.authorEmail}. Message ID: ${emailResult.messageId}`);
+    } else {
+      console.error(`❌ Failed to send blog rejection email to ${post.authorEmail}:`, emailResult.error);
+    }
   } catch (emailError) {
-    console.error('Failed to send blog rejection email:', emailError);
+    console.error('❌ Exception while sending blog rejection email:', emailError);
     // Don't fail rejection if email fails
   }
 
@@ -679,24 +699,93 @@ const deleteBlogPost = asyncHandler(async (req, res, next) => {
 
   // Send email notification to the author before deleting
   try {
-    await sendEmailNotification(
-      post.authorEmail,
-      'Blog Post Deleted - UrbanSprout',
-      `Hello ${post.author}!
+    console.log(`🔍 Looking up author for blog post deletion: ${post._id}`);
+    console.log(`📝 Post details:`, {
+      title: post.title,
+      author: post.author,
+      authorEmail: post.authorEmail,
+      authorId: post.authorId
+    });
 
-We wanted to inform you that your blog post "${post.title}" has been deleted from UrbanSprout.
+    // Determine recipient email and name with multiple fallback strategies
+    let recipientEmail = post.authorEmail;
+    let recipientName = post.author || 'Author';
+
+    // Strategy 1: Try to find user by authorId first (most reliable)
+    if (post.authorId) {
+      try {
+        const authorDoc = await User.findById(post.authorId).select('email name').lean();
+        if (authorDoc && authorDoc.email) {
+          recipientEmail = authorDoc.email;
+          recipientName = authorDoc.name || recipientName;
+          console.log(`✅ Found user by ID: ${authorDoc.email}`);
+        }
+      } catch (lookupErr) {
+        console.error('Error looking up author by ID:', lookupErr);
+      }
+    }
+
+    // Strategy 2: If still no email, try finding by authorEmail
+    if (!recipientEmail && post.authorEmail) {
+      try {
+        const authorDoc = await User.findOne({ email: post.authorEmail }).select('email name').lean();
+        if (authorDoc && authorDoc.email) {
+          recipientEmail = authorDoc.email;
+          recipientName = authorDoc.name || recipientName;
+          console.log(`✅ Found user by email: ${authorDoc.email}`);
+        }
+      } catch (lookupErr) {
+        console.error('Error looking up author by email:', lookupErr);
+      }
+    }
+
+    // Strategy 3: If still no email, try finding by author name (last resort)
+    if (!recipientEmail && post.author) {
+      try {
+        const authorDoc = await User.findOne({ name: post.author }).select('email name').lean();
+        if (authorDoc && authorDoc.email) {
+          recipientEmail = authorDoc.email;
+          recipientName = authorDoc.name || recipientName;
+          console.log(`✅ Found user by name: ${authorDoc.email}`);
+        }
+      } catch (lookupErr) {
+        console.error('Error looking up author by name:', lookupErr);
+      }
+    }
+
+    if (!recipientEmail) {
+      console.warn(`❌ Skipping deletion email: no recipient email found for post ${post._id}`);
+      console.warn(`📝 Post had: authorEmail=${post.authorEmail}, authorId=${post.authorId}, author=${post.author}`);
+    } else {
+      console.log(`📧 Sending deletion email to: ${recipientEmail}`);
+      
+      const subject = 'Blog Post Deleted - UrbanSprout';
+      const message = `Hello ${recipientName}!
+
+We wanted to inform you that your blog post "${post.title}" has been deleted from UrbanSprout by an administrator.
 
 If you have any questions about this action or would like to discuss it further, please don't hesitate to contact our support team.
 
 Thank you for your understanding.
 
 Best regards,
-The UrbanSprout Team`,
-      post.author
-    );
-    console.log(`Blog deletion email sent to ${post.authorEmail}`);
+The UrbanSprout Team`;
+
+      const emailResult = await sendEmailNotification(
+        recipientEmail,
+        subject,
+        message,
+        recipientName
+      );
+
+      if (emailResult?.success) {
+        console.log(`✅ Blog deletion email sent successfully to ${recipientEmail}`, emailResult.messageId ? `(id: ${emailResult.messageId})` : '');
+      } else {
+        console.error(`❌ Failed to send blog deletion email to ${recipientEmail}:`, emailResult?.error || 'Unknown error');
+      }
+    }
   } catch (emailError) {
-    console.error('Error sending blog deletion email:', emailError);
+    console.error('💥 Exception while sending blog deletion email:', emailError);
     // Don't fail deletion if email fails
   }
 

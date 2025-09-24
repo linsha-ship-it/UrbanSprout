@@ -341,6 +341,39 @@ const createOrder = asyncHandler(async (req, res, next) => {
 
   await order.populate('items.product', 'name images');
 
+  // Send order confirmation email for COD orders (only to non-admin users)
+  try {
+    const user = await User.findById(req.user._id);
+    if (user && user.email && user.role !== 'admin') {
+      const orderDetails = {
+        orderId: order._id.toString().slice(-8),
+        orderNumber: order.orderNumber,
+        orderDate: order.createdAt,
+        totalAmount: order.total,
+        items: order.items.map(item => ({
+          name: item.name || item.product?.name || 'Plant',
+          quantity: item.quantity,
+          price: item.price
+        })),
+        shippingAddress: `${order.shippingAddress.fullName}, ${order.shippingAddress.address}, ${order.shippingAddress.city}, ${order.shippingAddress.state || order.shippingAddress.city}, ${order.shippingAddress.postalCode}, ${order.shippingAddress.country}`,
+        estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString(), // 7 days from now
+        paymentMethod: order.paymentMethod || 'Cash on Delivery',
+        paymentStatus: 'Pending - Pay on Delivery'
+      };
+
+      // Send order confirmation email
+      await sendOrderConfirmationEmail(user.email, user.name, orderDetails);
+      console.log(`✅ COD order confirmation email sent to ${user.email} (${user.role})`);
+    } else if (user && user.role === 'admin') {
+      console.log(`ℹ️ Skipping email for admin user: ${user.email} (${user.role})`);
+    } else {
+      console.log(`⚠️ Could not send email - user not found or no email: ${req.user._id}`);
+    }
+  } catch (emailError) {
+    console.error('❌ Failed to send COD order confirmation email:', emailError);
+    // Don't fail the order creation if email fails
+  }
+
   res.status(201).json({
     success: true,
     message: 'Order created successfully',
@@ -553,42 +586,50 @@ const verifyPayment = asyncHandler(async (req, res, next) => {
     // Get user details for email
     const user = await User.findById(req.user._id);
 
-    // Send order confirmation email
+    // Send order confirmation email (only to non-admin users)
     try {
-      const orderDetails = {
-        orderId: order._id.toString().slice(-8),
-        orderDate: order.createdAt,
-        totalAmount: order.total,
-        items: order.items.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price
-        })),
-        shippingAddress: `${order.shippingAddress.fullName}, ${order.shippingAddress.address}, ${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.postalCode}`,
-        estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString() // 7 days from now
-      };
+      if (user && user.email && user.role !== 'admin') {
+        const orderDetails = {
+          orderId: order._id.toString().slice(-8),
+          orderDate: order.createdAt,
+          totalAmount: order.total,
+          items: order.items.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price
+          })),
+          shippingAddress: `${order.shippingAddress.fullName}, ${order.shippingAddress.address}, ${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.postalCode}`,
+          estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString() // 7 days from now
+        };
 
-      // Send order confirmation email
-      await sendOrderConfirmationEmail(user.email, user.name, orderDetails);
-      console.log(`Order confirmation email sent to ${user.email}`);
+        // Send order confirmation email
+        await sendOrderConfirmationEmail(user.email, user.name, orderDetails);
+        console.log(`✅ Order confirmation email sent to ${user.email} (${user.role})`);
+      } else if (user && user.role === 'admin') {
+        console.log(`ℹ️ Skipping email for admin user: ${user.email} (${user.role})`);
+      }
     } catch (emailError) {
       console.error('Failed to send order confirmation email:', emailError);
       // Don't fail payment if email fails
     }
 
-    // Send payment confirmation email
+    // Send payment confirmation email (only to non-admin users)
     try {
-      const paymentDetails = {
-        transactionId: razorpay_payment_id,
-        paymentDate: new Date(),
-        paymentMethod: 'UPI',
-        amount: order.total,
-        orderId: order._id.toString().slice(-8)
-      };
+      if (user && user.email && user.role !== 'admin') {
+        const paymentDetails = {
+          transactionId: razorpay_payment_id,
+          paymentDate: new Date(),
+          paymentMethod: 'UPI',
+          amount: order.total,
+          orderId: order._id.toString().slice(-8)
+        };
 
-      // Temporarily disabled due to Gmail authentication issues
-      // await sendPaymentConfirmationEmail(user.email, user.name, paymentDetails);
-      console.log(`Payment confirmation email would be sent to ${user.email} (disabled)`);
+        // Temporarily disabled due to Gmail authentication issues
+        // await sendPaymentConfirmationEmail(user.email, user.name, paymentDetails);
+        console.log(`ℹ️ Payment confirmation email would be sent to ${user.email} (${user.role}) - currently disabled`);
+      } else if (user && user.role === 'admin') {
+        console.log(`ℹ️ Skipping payment confirmation email for admin user: ${user.email} (${user.role})`);
+      }
     } catch (emailError) {
       console.error('Failed to send payment confirmation email:', emailError);
       // Don't fail payment if email fails

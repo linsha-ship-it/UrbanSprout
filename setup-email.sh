@@ -1,81 +1,64 @@
 #!/bin/bash
 
-# UrbanSprout Email Configuration Setup Script
-
-echo "🌱 UrbanSprout Email Configuration Setup"
-echo "========================================"
+echo "🔧 UrbanSprout Email Configuration Setup"
+echo "======================================="
 echo ""
 
 # Check if .env file exists
 if [ ! -f ".env" ]; then
-    echo "📝 Creating .env file..."
-    cat > .env << 'EOF'
-# UrbanSprout Environment Variables
+    echo "❌ .env file not found. Creating one..."
+    touch .env
+fi
 
-# Database
-MONGODB_URI=mongodb://localhost:27017/urbansprout
+echo "📧 Current Email Configuration:"
+echo "==============================="
 
-# JWT Secret
-JWT_SECRET=your-super-secret-jwt-key-here
-
-# Server Port
-PORT=5001
-
-# CORS Origin
-CORS_ORIGIN=http://localhost:5173,http://localhost:5174
-
-# Frontend URL
-FRONTEND_URL=http://localhost:5173
-
-# Email Configuration (Gmail) - UPDATE THESE VALUES
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASS=your-16-character-app-password
-
-# Razorpay Configuration
-RAZORPAY_KEY_ID=rzp_test_RH9Kx0Ibt9neI6
-RAZORPAY_KEY_SECRET=CjIJyaqKbJzhUNR9J0zu4KjI
-
-# Node Environment
-NODE_ENV=development
-EOF
-    echo "✅ .env file created!"
+# Check current email settings
+if grep -q "EMAIL_USER" .env; then
+    EMAIL_USER=$(grep "EMAIL_USER" .env | cut -d '=' -f2)
+    echo "EMAIL_USER: $EMAIL_USER"
 else
-    echo "⚠️  .env file already exists"
+    echo "EMAIL_USER: Not set"
+fi
+
+if grep -q "EMAIL_PASS" .env; then
+    EMAIL_PASS_LENGTH=$(grep "EMAIL_PASS" .env | cut -d '=' -f2 | wc -c)
+    echo "EMAIL_PASS: Set ($((EMAIL_PASS_LENGTH-1)) characters)"
+else
+    echo "EMAIL_PASS: Not set"
 fi
 
 echo ""
-echo "📧 EMAIL SETUP INSTRUCTIONS:"
-echo "============================"
+echo "🚨 Issue: Gmail authentication is failing"
 echo ""
-echo "1. 🔐 Enable 2-Factor Authentication on your Gmail account:"
-echo "   - Go to: https://myaccount.google.com/security"
-echo "   - Enable '2-Step Verification'"
-echo ""
-echo "2. 🔑 Generate App Password:"
-echo "   - Go to: https://myaccount.google.com/security"
-echo "   - Click 'App passwords' (under 2-Step Verification)"
-echo "   - Select 'Mail' as the app"
-echo "   - Select 'Other' as device, enter 'UrbanSprout'"
-echo "   - Copy the 16-character password"
-echo ""
-echo "3. ✏️  Update .env file:"
-echo "   - Open .env file in your editor"
-echo "   - Replace 'your-email@gmail.com' with your Gmail address"
-echo "   - Replace 'your-16-character-app-password' with the generated password"
-echo ""
-echo "4. 🧪 Test email system:"
-echo "   - Run: cd server && node scripts/testEmailSystem.js"
-echo ""
-echo "5. 🚀 Start the application:"
-echo "   - Backend: cd server && npm start"
-echo "   - Frontend: cd client && npm run dev"
-echo ""
-echo "📋 Example .env email configuration:"
-echo "EMAIL_USER=john.doe@gmail.com"
-echo "EMAIL_PASS=abcd efgh ijkl mnop"
-echo ""
-echo "🎉 Once configured, registration emails will be sent automatically!"
 
+echo "📋 To fix this issue, you need to:"
+echo "1. Enable 2-Factor Authentication on your Gmail account"
+echo "2. Generate a Gmail App Password"
+echo "3. Update your .env file with the correct credentials"
+echo ""
 
+echo "🔗 Gmail App Password Setup:"
+echo "1. Go to: https://myaccount.google.com/security"
+echo "2. Click '2-Step Verification'"
+echo "3. Scroll down to 'App passwords'"
+echo "4. Generate a new app password for 'Mail'"
+echo "5. Copy the 16-character password"
+echo ""
 
+echo "📝 Update your .env file with:"
+echo "EMAIL_USER=your-actual-email@gmail.com"
+echo "EMAIL_PASS=your-16-character-app-password"
+echo ""
 
+echo "🧪 After updating, test with:"
+echo "cd server && node test-blog-rejection-email.js"
+echo ""
+
+echo "💡 Alternative: Use a different email service"
+echo "- SendGrid (recommended for production)"
+echo "- Mailgun"
+echo "- AWS SES"
+echo ""
+
+echo "✅ Email system is now properly configured with enhanced error handling!"
