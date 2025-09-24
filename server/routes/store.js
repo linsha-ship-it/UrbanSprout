@@ -26,10 +26,11 @@ router.get('/', async (req, res) => {
       limit = 12
     } = req.query;
 
-    // Build filter object - only show published, non-archived products
+    // Build filter object - only show published, non-archived products, exclude placeholders
     const filter = {
       published: true,
-      archived: false
+      archived: false,
+      name: { $not: /^Placeholder for/ }
     };
     
     if (category && category !== 'all') {
@@ -169,7 +170,7 @@ router.post('/orders', auth, async (req, res) => {
       shipping = 0,
       tax = 0,
       total,
-      status = 'Pending',
+      status = 'pending',
       notes
     } = req.body;
 

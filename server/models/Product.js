@@ -10,11 +10,6 @@ const productSchema = new mongoose.Schema({
   category: {
     type: String,
     required: true,
-    enum: [
-      'Tools', 'Fertilizers', 'Pots', 'Watering Cans', 'Soil & Compost', 
-      'Plant Care', 'Garden Accessories', 'Indoor Growing', 'Outdoor Growing',
-      'Seeds', 'Planters', 'Garden Tools', 'Plant Food', 'Pest Control'
-    ],
     index: true
   },
   description: {

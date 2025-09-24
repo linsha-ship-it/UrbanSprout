@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { suggestPlants, getAllPlants, getPlantById } = require('../controllers/plantController');
+const { suggestPlants, getPlantSuggestionsByCombination, getAllPlants, getPlantById } = require('../controllers/plantController');
 
 // POST /api/plants/suggest - Get plant suggestions based on keyword and preferences
 router.post('/suggest', suggestPlants);
+
+// POST /api/plants/suggestions - Get plant suggestions based on user combination
+router.post('/suggestions', getPlantSuggestionsByCombination);
 
 // GET /api/plants - Get all plants
 router.get('/', getAllPlants);

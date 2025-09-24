@@ -58,6 +58,8 @@ const storeRoutes = require('./routes/store');
 const adminRoutes = require('./routes/admin');
 const chatbotRoutes = require('./routes/chatbot');
 const notificationRoutes = require('./routes/notifications');
+const plantRoutes = require('./routes/plants');
+const gardenRoutes = require('./routes/garden');
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -66,6 +68,8 @@ app.use('/api/store', storeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/plants', plantRoutes);
+app.use('/api/garden', gardenRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

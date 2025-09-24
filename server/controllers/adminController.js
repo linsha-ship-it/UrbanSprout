@@ -5,7 +5,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification');
 const notificationService = require('../utils/notificationService');
-const { sendBlogApprovalEmail, sendBlogRejectionEmail } = require('../utils/emailService');
+const { sendBlogApprovalEmail, sendBlogRejectionEmail, sendEmailNotification, sendAdminVerificationEmail, sendOrderStatusUpdateEmail } = require('../utils/emailService');
 const { AppError } = require('../middlewares/errorHandler');
 const { asyncHandler } = require('../middlewares/errorHandler');
 const crypto = require('crypto');
@@ -206,6 +206,16 @@ const updateUserRole = asyncHandler(async (req, res, next) => {
   user.role = role;
   await user.save();
 
+  // Send verification email if role is upgraded to admin
+  if (role === 'admin') {
+    try {
+      await sendAdminVerificationEmail(user.email, user.name, 'user', 'Your account has been upgraded to admin status');
+      console.log(`Admin verification email sent to ${user.email}`);
+    } catch (emailError) {
+      console.error('Failed to send admin verification email:', emailError);
+    }
+  }
+
   res.json({
     success: true,
     message: `User role updated to ${role}`,
@@ -315,7 +325,7 @@ const getAllOrders = asyncHandler(async (req, res) => {
 
   const orders = await Order.find(query)
     .populate('user', 'name email')
-    .populate('items.plant', 'name images')
+    .populate('items.product', 'name images')
     .sort(sortObj)
     .skip(skip)
     .limit(limit);
@@ -358,12 +368,79 @@ const updateOrderStatus = asyncHandler(async (req, res, next) => {
 
   order.status = status;
   
-  // Add to status history
-  order.statusHistory.push({
-    status,
-    note: note || `Status updated to ${status}`,
-    updatedBy: req.user._id
-  });
+  // Add to status history (if statusHistory exists)
+  if (order.statusHistory) {
+    order.statusHistory.push({
+      status,
+      note: note || `Status updated to ${status}`,
+      updatedBy: req.user._id
+    });
+  }
+
+  // Send notification to user about order status update
+  try {
+    let notificationType = 'order_status_update';
+    let notificationTitle = 'Order Status Updated';
+    let notificationMessage = `Your order #${order.orderNumber} status has been updated to: ${status.toUpperCase()}`;
+
+    // Set specific notification types for important status changes
+    if (status === 'shipped') {
+      notificationType = 'order_shipped';
+      notificationTitle = 'Order Shipped! 🚚';
+      notificationMessage = `Great news! Your order #${order.orderNumber} has been shipped and is on its way to you.`;
+    } else if (status === 'delivered') {
+      notificationType = 'order_delivered';
+      notificationTitle = 'Order Delivered! ✅';
+      notificationMessage = `Your order #${order.orderNumber} has been delivered successfully. Thank you for shopping with UrbanSprout!`;
+    } else if (status === 'cancelled') {
+      notificationType = 'order_cancelled';
+      notificationTitle = 'Order Cancelled';
+      notificationMessage = `Your order #${order.orderNumber} has been cancelled. If you have any questions, please contact our support team.`;
+    }
+
+    await notificationService.sendNotification(order.user, {
+      userEmail: order.user.email,
+      type: notificationType,
+      title: notificationTitle,
+      message: notificationMessage,
+      relatedId: order._id,
+      relatedModel: 'Order'
+    });
+
+    console.log(`Order status notification sent to user ${order.user.email}`);
+
+    // Send professional email notification for order status update
+    try {
+      const orderDetails = {
+        orderId: order.orderNumber || order._id.toString().slice(-8),
+        status: status,
+        updatedAt: new Date(),
+        trackingNumber: order.trackingNumber || null,
+        carrier: order.shipping?.carrier || 'Standard Shipping',
+        estimatedDelivery: order.shipping?.estimatedDelivery || '3-5 business days'
+      };
+
+      await sendOrderStatusUpdateEmail(order.user.email, order.user.name, orderDetails);
+      console.log(`Professional order status update email sent to ${order.user.email}`);
+    } catch (emailError) {
+      console.error('Error sending order status update email:', emailError);
+      // Fallback to basic email notification
+      try {
+        await sendEmailNotification(
+          order.user.email,
+          `Order Status Update - ${status.toUpperCase()}`,
+          `Your order #${order.orderNumber || order._id.toString().slice(-8)} status has been updated to: ${status.toUpperCase()}`,
+          order.user.name || 'Customer'
+        );
+        console.log(`Fallback email notification sent to ${order.user.email}`);
+      } catch (fallbackError) {
+        console.error('Error sending fallback email notification:', fallbackError);
+      }
+    }
+  } catch (notificationError) {
+    console.error('Error sending order status notification:', notificationError);
+    // Don't fail the order update if notification fails
+  }
 
   // Set specific timestamps
   if (status === 'shipped' && !order.shipping.shippedAt) {
@@ -477,6 +554,25 @@ const approveBlogPost = asyncHandler(async (req, res, next) => {
     // Don't fail approval if email fails
   }
 
+  // Send notification to the author
+  try {
+    const author = await User.findOne({ email: post.authorEmail });
+    if (author) {
+      await notificationService.sendNotification(author._id, {
+        userEmail: post.authorEmail,
+        type: 'blog_approved',
+        title: 'Blog Post Approved! ✅',
+        message: `Congratulations! Your blog post "${post.title}" has been approved and is now live on UrbanSprout.`,
+        relatedId: post._id,
+        relatedModel: 'Blog'
+      });
+      console.log(`Blog approval notification sent to user ${post.authorEmail}`);
+    }
+  } catch (notificationError) {
+    console.error('Error sending blog approval notification:', notificationError);
+    // Don't fail approval if notification fails
+  }
+
   res.json({
     success: true,
     message: 'Blog post approved successfully',
@@ -526,6 +622,25 @@ const rejectBlogPost = asyncHandler(async (req, res, next) => {
     // Don't fail rejection if email fails
   }
 
+  // Send notification to the author
+  try {
+    const author = await User.findOne({ email: post.authorEmail });
+    if (author) {
+      await notificationService.sendNotification(author._id, {
+        userEmail: post.authorEmail,
+        type: 'blog_rejected',
+        title: 'Blog Post Needs Revision',
+        message: `Your blog post "${post.title}" needs some revisions. Reason: ${reason.trim()}`,
+        relatedId: post._id,
+        relatedModel: 'Blog'
+      });
+      console.log(`Blog rejection notification sent to user ${post.authorEmail}`);
+    }
+  } catch (notificationError) {
+    console.error('Error sending blog rejection notification:', notificationError);
+    // Don't fail rejection if notification fails
+  }
+
   res.json({
     success: true,
     message: 'Blog post rejected successfully',
@@ -541,6 +656,48 @@ const deleteBlogPost = asyncHandler(async (req, res, next) => {
 
   if (!post) {
     return next(new AppError('Blog post not found', 404));
+  }
+
+  // Send notification to the author before deleting
+  try {
+    const author = await User.findOne({ email: post.authorEmail });
+    if (author) {
+      await notificationService.sendNotification(author._id, {
+        userEmail: post.authorEmail,
+        type: 'blog_deleted',
+        title: 'Blog Post Deleted',
+        message: `Your blog post "${post.title}" has been deleted from UrbanSprout.`,
+        relatedId: post._id,
+        relatedModel: 'Blog'
+      });
+      console.log(`Blog deletion notification sent to user ${post.authorEmail}`);
+    }
+  } catch (notificationError) {
+    console.error('Error sending blog deletion notification:', notificationError);
+    // Don't fail deletion if notification fails
+  }
+
+  // Send email notification to the author before deleting
+  try {
+    await sendEmailNotification(
+      post.authorEmail,
+      'Blog Post Deleted - UrbanSprout',
+      `Hello ${post.author}!
+
+We wanted to inform you that your blog post "${post.title}" has been deleted from UrbanSprout.
+
+If you have any questions about this action or would like to discuss it further, please don't hesitate to contact our support team.
+
+Thank you for your understanding.
+
+Best regards,
+The UrbanSprout Team`,
+      post.author
+    );
+    console.log(`Blog deletion email sent to ${post.authorEmail}`);
+  } catch (emailError) {
+    console.error('Error sending blog deletion email:', emailError);
+    // Don't fail deletion if email fails
   }
 
   await Blog.findByIdAndDelete(req.params.id);
@@ -844,7 +1001,7 @@ const getUserDetails = asyncHandler(async (req, res, next) => {
 // @route   GET /api/admin/products
 // @access  Private (Admin only)
 const getAllProducts = asyncHandler(async (req, res, next) => {
-  const { page = 1, limit = 10, search, category, status, featured } = req.query;
+  const { page = 1, limit = 10, search, category, status, featured, stock, minPrice, maxPrice, sortBy, sortOrder } = req.query;
   const { skip } = req.pagination;
 
   let query = {};
@@ -879,9 +1036,55 @@ const getAllProducts = asyncHandler(async (req, res, next) => {
     query.featured = featured === 'true';
   }
 
+  // Stock filter
+  if (stock) {
+    if (stock === 'in-stock') {
+      // In stock: stock > lowStockThreshold (excludes low stock and out of stock)
+      query.$expr = { $gt: ['$stock', '$lowStockThreshold'] };
+    } else if (stock === 'low-stock') {
+      // Low stock: stock > 0 AND stock <= lowStockThreshold (excludes out of stock)
+      query.$expr = { 
+        $and: [
+          { $gt: ['$stock', 0] },
+          { $lte: ['$stock', '$lowStockThreshold'] }
+        ]
+      };
+    } else if (stock === 'out-of-stock') {
+      // Out of stock: stock = 0
+      query.stock = 0;
+    }
+  }
+
+  // Price range filter
+  if (minPrice || maxPrice) {
+    query.regularPrice = {};
+    if (minPrice) {
+      query.regularPrice.$gte = parseFloat(minPrice);
+    }
+    if (maxPrice) {
+      query.regularPrice.$lte = parseFloat(maxPrice);
+    }
+  }
+
+  // Build sort object
+  let sortObj = { createdAt: -1 }; // default sort
+  if (sortBy && sortOrder) {
+    sortObj = {};
+    const order = sortOrder === 'desc' ? -1 : 1;
+    if (sortBy === 'name') {
+      sortObj.name = order;
+    } else if (sortBy === 'price') {
+      sortObj.regularPrice = order;
+    } else if (sortBy === 'stock') {
+      sortObj.stock = order;
+    } else if (sortBy === 'createdAt') {
+      sortObj.createdAt = order;
+    }
+  }
+
   const products = await Product.find(query)
     .populate('vendor', 'name email')
-    .sort({ createdAt: -1 })
+    .sort(sortObj)
     .skip(skip)
     .limit(parseInt(limit));
 
@@ -1099,6 +1302,11 @@ const deleteProduct = asyncHandler(async (req, res, next) => {
 // @access  Private (Admin only)
 const getProductCategories = asyncHandler(async (req, res, next) => {
   const categories = await Product.aggregate([
+    {
+      $match: {
+        name: { $not: /^Dummy Product for/ }
+      }
+    },
     { $group: { _id: '$category', count: { $sum: 1 } } },
     { $sort: { count: -1 } }
   ]);
@@ -1106,6 +1314,147 @@ const getProductCategories = asyncHandler(async (req, res, next) => {
   res.json({
     success: true,
     data: { categories }
+  });
+});
+
+// @desc    Get categories with products count
+// @route   GET /api/admin/products/categories-with-products
+// @access  Private (Admin only)
+const getCategoriesWithProducts = asyncHandler(async (req, res, next) => {
+  const categories = await Product.aggregate([
+    {
+      $match: {
+        name: { $not: /^Dummy Product for/ }
+      }
+    },
+    { $group: { _id: '$category', count: { $sum: 1 } } },
+    { $match: { count: { $gt: 0 } } },
+    { $sort: { count: -1 } }
+  ]);
+
+  res.json({
+    success: true,
+    data: { categories: categories.map(cat => cat._id) }
+  });
+});
+
+// @desc    Delete category
+// @route   DELETE /api/admin/products/categories/:categoryName
+// @access  Private (Admin only)
+const deleteCategory = asyncHandler(async (req, res, next) => {
+  const { categoryName } = req.params;
+
+  // Check if category has real products (excluding placeholder and dummy products)
+  const productCount = await Product.countDocuments({ 
+    category: categoryName,
+    $and: [
+      { published: { $ne: false } },
+      { archived: { $ne: true } },
+      { name: { $not: /^Dummy Product for/ } },
+      { name: { $not: /^Placeholder for/ } }
+    ]
+  });
+  
+  if (productCount > 0) {
+    return next(new AppError(`Cannot delete category "${categoryName}" - it has ${productCount} products`, 400));
+  }
+
+  // Check if category exists
+  const categoryExists = await Product.findOne({ category: categoryName });
+  if (!categoryExists) {
+    return next(new AppError('Category not found', 404));
+  }
+
+  // Delete all placeholder products with this category (including the one created for the category)
+  const deleteResult = await Product.deleteMany({ 
+    category: categoryName,
+    $or: [
+      { published: false },
+      { archived: true },
+      { name: /^Dummy Product for/ },
+      { name: /^Placeholder for/ }
+    ]
+  });
+
+  res.json({
+    success: true,
+    message: `Category "${categoryName}" deleted successfully`,
+    data: { deletedCount: deleteResult.deletedCount }
+  });
+});
+
+// @desc    Create new category
+// @route   POST /api/admin/products/categories
+// @access  Private (Admin only)
+const createCategory = asyncHandler(async (req, res, next) => {
+  const { categoryName } = req.body;
+
+  if (!categoryName || categoryName.trim() === '') {
+    return next(new AppError('Category name is required', 400));
+  }
+
+  // Check if category already exists
+  const categoryExists = await Product.findOne({ category: categoryName.trim() });
+  if (categoryExists) {
+    return next(new AppError('Category already exists', 400));
+  }
+
+  // Create a placeholder product with this category to make it "exist"
+  // This product is published but marked as a placeholder so it doesn't show in the store
+  const placeholderProduct = new Product({
+    name: `Placeholder for ${categoryName.trim()}`,
+    category: categoryName.trim(),
+    description: 'This is a placeholder product to create the category',
+    sku: `PLACEHOLDER-${Date.now()}`,
+    regularPrice: 0,
+    stock: 0,
+    published: true, // Published so it appears in categories
+    archived: false, // Not archived so it appears in categories
+    tags: ['placeholder', 'category-creation'] // Tag to identify placeholder products
+  });
+
+  await placeholderProduct.save();
+
+  res.json({
+    success: true,
+    message: `Category "${categoryName.trim()}" created successfully`,
+    data: { category: categoryName.trim() }
+  });
+});
+
+// @desc    Update category name
+// @route   PUT /api/admin/products/categories/:oldCategoryName
+// @access  Private (Admin only)
+const updateCategory = asyncHandler(async (req, res, next) => {
+  const { oldCategoryName } = req.params;
+  const { newCategoryName } = req.body;
+
+  if (!newCategoryName || newCategoryName.trim() === '') {
+    return next(new AppError('New category name is required', 400));
+  }
+
+  // Check if old category exists
+  const oldCategoryExists = await Product.findOne({ category: oldCategoryName });
+  if (!oldCategoryExists) {
+    return next(new AppError('Category not found', 404));
+  }
+
+  // Check if new category name already exists
+  const newCategoryExists = await Product.findOne({ category: newCategoryName.trim() });
+  if (newCategoryExists) {
+    return next(new AppError('Category name already exists', 400));
+  }
+
+  // Update all products with the old category name (including dummy products)
+  const result = await Product.updateMany(
+    { category: oldCategoryName },
+    { $set: { category: newCategoryName.trim() } }
+  );
+
+  res.json({
+    success: true,
+    message: `Category "${oldCategoryName}" updated to "${newCategoryName}" successfully`,
+    data: { updatedCount: result.modifiedCount }
   });
 });
 
@@ -1131,6 +1480,293 @@ const bulkUpdateProducts = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Get inventory statistics
+// @route   GET /api/admin/products/inventory-stats
+// @access  Private (Admin only)
+const getInventoryStats = asyncHandler(async (req, res, next) => {
+  const totalProducts = await Product.countDocuments({ archived: false });
+  const lowStockProducts = await Product.find({ 
+    $expr: { 
+      $and: [
+        { $gt: ['$stock', 0] },
+        { $lte: ['$stock', '$lowStockThreshold'] }
+      ]
+    },
+    archived: false 
+  });
+  const outOfStockProducts = await Product.find({ 
+    stock: 0, 
+    archived: false 
+  });
+  
+  // Calculate total inventory value
+  const products = await Product.find({ archived: false });
+  const totalValue = products.reduce((sum, product) => {
+    return sum + (product.stock * product.regularPrice);
+  }, 0);
+
+  // Get top selling products (mock data for now)
+  const topSellingProducts = await Product.find({ archived: false })
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .select('name salesCount totalSales');
+
+  // Get slow moving products (mock data for now)
+  const slowMovingProducts = await Product.find({ archived: false })
+    .sort({ createdAt: 1 })
+    .limit(5)
+    .select('name salesCount totalSales');
+
+  res.json({
+    success: true,
+    data: {
+      totalProducts,
+      lowStockCount: lowStockProducts.length,
+      outOfStockCount: outOfStockProducts.length,
+      totalValue,
+      lowStockProducts,
+      outOfStockProducts,
+      topSellingProducts,
+      slowMovingProducts
+    }
+  });
+});
+
+// @desc    Get admin notifications
+// @route   GET /api/admin/notifications
+// @access  Private (Admin only)
+const getNotifications = asyncHandler(async (req, res, next) => {
+  // Mock notifications for now
+  const notifications = [
+    {
+      id: 1,
+      type: 'low_stock',
+      message: '5 products are running low on stock',
+      timestamp: new Date(),
+      read: false
+    },
+    {
+      id: 2,
+      type: 'out_of_stock',
+      message: '2 products are out of stock',
+      timestamp: new Date(),
+      read: false
+    }
+  ];
+
+  res.json({
+    success: true,
+    data: notifications
+  });
+});
+
+// @desc    Get product reviews
+// @route   GET /api/admin/products/reviews
+// @access  Private (Admin only)
+const getProductReviews = asyncHandler(async (req, res, next) => {
+  // Mock reviews for now
+  const reviews = [
+    {
+      _id: 1,
+      productName: 'Garden Trowel',
+      customerName: 'John Doe',
+      customerEmail: 'john@example.com',
+      rating: 5,
+      comment: 'Great quality tool!',
+      status: 'pending',
+      createdAt: new Date()
+    },
+    {
+      _id: 2,
+      productName: 'Plant Pot',
+      customerName: 'Jane Smith',
+      customerEmail: 'jane@example.com',
+      rating: 4,
+      comment: 'Good pot, fast delivery',
+      status: 'approved',
+      createdAt: new Date()
+    }
+  ];
+
+  res.json({
+    success: true,
+    data: reviews
+  });
+});
+
+// @desc    Approve or reject review
+// @route   PUT /api/admin/products/reviews/:id/:action
+// @access  Private (Admin only)
+const handleReviewAction = asyncHandler(async (req, res, next) => {
+  const { id, action } = req.params;
+  
+  // Mock implementation
+  res.json({
+    success: true,
+    message: `Review ${action}ed successfully`
+  });
+});
+
+// @desc    Bulk edit products
+// @route   PUT /api/admin/products/bulk-edit
+// @access  Private (Admin only)
+const bulkEditProducts = asyncHandler(async (req, res, next) => {
+  const { productIds, updates } = req.body;
+
+  if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+    return next(new AppError('Product IDs are required', 400));
+  }
+
+  // Handle price adjustments
+  if (updates.priceAdjustment) {
+    const products = await Product.find({ _id: { $in: productIds } });
+    
+    for (const product of products) {
+      if (updates.priceAdjustmentType === 'percentage') {
+        product.regularPrice = product.regularPrice * (1 + updates.priceAdjustment / 100);
+      } else {
+        product.regularPrice = product.regularPrice + updates.priceAdjustment;
+      }
+      await product.save();
+    }
+  }
+
+  // Handle stock adjustments
+  if (updates.stockAdjustment) {
+    await Product.updateMany(
+      { _id: { $in: productIds } },
+      { $inc: { stock: updates.stockAdjustment } }
+    );
+  }
+
+  res.json({
+    success: true,
+    message: `${productIds.length} products updated successfully`
+  });
+});
+
+// @desc    Upload CSV file
+// @route   POST /api/admin/products/upload-csv
+// @access  Private (Admin only)
+const uploadCSV = asyncHandler(async (req, res, next) => {
+  // Mock implementation
+  res.json({
+    success: true,
+    message: 'CSV uploaded successfully',
+    data: { processed: 10 }
+  });
+});
+
+// @desc    Create discount
+// @route   POST /api/admin/products/discounts
+// @access  Private (Admin only)
+const createDiscount = asyncHandler(async (req, res, next) => {
+  // Mock implementation
+  res.json({
+    success: true,
+    message: 'Discount created successfully'
+  });
+});
+
+// @desc    Send custom email to order customer
+// @route   POST /api/admin/orders/:id/send-email
+// @access  Private (Admin only)
+const sendOrderEmail = asyncHandler(async (req, res, next) => {
+  const { content, subject = 'Order Update' } = req.body;
+  const orderId = req.params.id;
+
+  if (!content || !content.trim()) {
+    return next(new AppError('Email content is required', 400));
+  }
+
+  const order = await Order.findById(orderId).populate('user', 'name email');
+  if (!order) {
+    return next(new AppError('Order not found', 404));
+  }
+
+  if (!order.user || !order.user.email) {
+    return next(new AppError('Customer email not found for this order', 400));
+  }
+
+  try {
+    await sendEmailNotification(
+      order.user.email,
+      subject,
+      content,
+      order.user.name || 'Customer'
+    );
+
+    res.json({
+      success: true,
+      message: 'Email sent successfully to customer'
+    });
+  } catch (error) {
+    console.error('Error sending order email:', error);
+    return next(new AppError('Failed to send email', 500));
+  }
+});
+
+// @desc    Send order status update notification
+// @route   POST /api/admin/orders/send-notification
+// @access  Private (Admin only)
+const sendOrderStatusNotification = asyncHandler(async (req, res, next) => {
+  const { orderId, type, status } = req.body;
+
+  const order = await Order.findById(orderId).populate('user', 'name email');
+  if (!order) {
+    return next(new AppError('Order not found', 404));
+  }
+
+  if (!order.user || !order.user.email) {
+    return next(new AppError('Customer email not found for this order', 400));
+  }
+
+  let subject, message;
+
+  if (type === 'status_update') {
+    subject = `Order Status Update - Order #${order.orderNumber}`;
+    message = `Hello ${order.user.name || 'Customer'}!
+
+Your order #${order.orderNumber} status has been updated to: ${status.toUpperCase()}
+
+Order Details:
+- Order Number: ${order.orderNumber}
+- Total Amount: ₹${order.total}
+- Items: ${order.items.length} item(s)
+- Status: ${status.toUpperCase()}
+
+${status === 'shipped' ? 'Your order is now on its way to you!' : ''}
+${status === 'delivered' ? 'Your order has been delivered successfully!' : ''}
+${status === 'cancelled' ? 'Your order has been cancelled. If you have any questions, please contact our support team.' : ''}
+
+Thank you for choosing UrbanSprout!`;
+  } else {
+    subject = `Order Update - Order #${order.orderNumber}`;
+    message = `Hello ${order.user.name || 'Customer'}!
+
+This is an update regarding your order #${order.orderNumber}.
+
+Thank you for choosing UrbanSprout!`;
+  }
+
+  try {
+    await sendEmailNotification(
+      order.user.email,
+      subject,
+      message,
+      order.user.name || 'Customer'
+    );
+
+    res.json({
+      success: true,
+      message: 'Status update notification sent successfully'
+    });
+  } catch (error) {
+    console.error('Error sending status notification:', error);
+    return next(new AppError('Failed to send notification', 500));
+  }
+});
+
 module.exports = {
   getDashboardStats,
   getAllUsers,
@@ -1145,6 +1781,8 @@ module.exports = {
   bulkUserOperations,
   getUserDetails,
   createPlant,
+  sendOrderEmail,
+  sendOrderStatusNotification,
   updatePlant,
   deletePlant,
   getAllOrders,
@@ -1163,5 +1801,16 @@ module.exports = {
   restoreProduct,
   deleteProduct,
   getProductCategories,
-  bulkUpdateProducts
+  getCategoriesWithProducts,
+  createCategory,
+  deleteCategory,
+  updateCategory,
+  bulkUpdateProducts,
+  getInventoryStats,
+  getNotifications,
+  getProductReviews,
+  handleReviewAction,
+  bulkEditProducts,
+  uploadCSV,
+  createDiscount
 };

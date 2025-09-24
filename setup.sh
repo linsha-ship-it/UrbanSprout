@@ -45,3 +45,5 @@ cd ..
 echo "🎉 Setup complete! You can now run:"
 echo "  Client: cd client && npm run dev"
 echo "  Server: cd server && npm run dev"
+
+

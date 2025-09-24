@@ -5,7 +5,7 @@ const Wishlist = require('../models/Wishlist');
 const User = require('../models/User');
 const { AppError } = require('../middlewares/errorHandler');
 const { asyncHandler } = require('../middlewares/errorHandler');
-const { sendOrderConfirmationEmail, sendPaymentConfirmationEmail } = require('../utils/emailService');
+const { sendOrderConfirmationEmail, sendPaymentConfirmationEmail, sendOrderStatusUpdateEmail } = require('../utils/emailService');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 
@@ -339,7 +339,7 @@ const createOrder = asyncHandler(async (req, res, next) => {
     coupon
   });
 
-  await order.populate('items.plant', 'name images');
+  await order.populate('items.product', 'name images');
 
   res.status(201).json({
     success: true,
@@ -355,7 +355,7 @@ const getUserOrders = asyncHandler(async (req, res) => {
   const { page, limit, skip } = req.pagination;
 
   const orders = await Order.find({ user: req.user._id })
-    .populate('items.plant', 'name images')
+    .populate('items.product', 'name images')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
@@ -385,7 +385,7 @@ const getOrder = asyncHandler(async (req, res, next) => {
   const order = await Order.findOne({
     _id: req.params.id,
     user: req.user._id
-  }).populate('items.plant', 'name images scientificName');
+  }).populate('items.product', 'name images scientificName');
 
   if (!order) {
     return next(new AppError('Order not found', 404));
@@ -444,8 +444,19 @@ const cancelOrder = asyncHandler(async (req, res, next) => {
 const createRazorpayOrder = asyncHandler(async (req, res, next) => {
   const { amount, currency = 'INR', receipt, notes } = req.body;
 
+  console.log('Creating Razorpay order with:', { amount, currency, receipt, notes });
+  console.log('Razorpay config:', {
+    key_id: razorpay.key_id,
+    key_secret: razorpay.key_secret ? '***' + razorpay.key_secret.slice(-4) : 'undefined'
+  });
+
   if (!amount || amount <= 0) {
     return next(new AppError('Invalid amount', 400));
+  }
+
+  if (!razorpay.key_id || !razorpay.key_secret) {
+    console.error('Razorpay credentials not configured');
+    return next(new AppError('Payment gateway not configured', 500));
   }
 
   try {
@@ -456,7 +467,11 @@ const createRazorpayOrder = asyncHandler(async (req, res, next) => {
       notes: notes || {}
     };
 
+    console.log('Razorpay order options:', options);
+
     const order = await razorpay.orders.create(options);
+
+    console.log('Razorpay order created successfully:', order);
 
     res.json({
       success: true,
@@ -464,7 +479,12 @@ const createRazorpayOrder = asyncHandler(async (req, res, next) => {
     });
   } catch (error) {
     console.error('Razorpay order creation error:', error);
-    return next(new AppError('Failed to create payment order', 500));
+    console.error('Error details:', {
+      message: error.message,
+      statusCode: error.statusCode,
+      response: error.response?.data
+    });
+    return next(new AppError(`Failed to create payment order: ${error.message}`, 500));
   }
 });
 
@@ -526,7 +546,7 @@ const verifyPayment = asyncHandler(async (req, res, next) => {
       shipping: 0,
       tax: 0,
       total: orderData.total,
-      status: 'Pending', // Use valid enum value
+      status: 'pending', // Use valid enum value
       notes: `Razorpay Order ID: ${razorpay_order_id}, Payment ID: ${razorpay_payment_id}`
     });
 
@@ -548,9 +568,9 @@ const verifyPayment = asyncHandler(async (req, res, next) => {
         estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString() // 7 days from now
       };
 
-      // Temporarily disabled due to Gmail authentication issues
-      // await sendOrderConfirmationEmail(user.email, user.name, orderDetails);
-      console.log(`Order confirmation email would be sent to ${user.email} (disabled)`);
+      // Send order confirmation email
+      await sendOrderConfirmationEmail(user.email, user.name, orderDetails);
+      console.log(`Order confirmation email sent to ${user.email}`);
     } catch (emailError) {
       console.error('Failed to send order confirmation email:', emailError);
       // Don't fail payment if email fails

@@ -17,6 +17,8 @@ const {
   deletePlant,
   getAllOrders,
   updateOrderStatus,
+  sendOrderEmail,
+  sendOrderStatusNotification,
   getAllBlogPosts,
   approveBlogPost,
   rejectBlogPost,
@@ -31,7 +33,18 @@ const {
   restoreProduct,
   deleteProduct,
   getProductCategories,
-  bulkUpdateProducts
+  getCategoriesWithProducts,
+  createCategory,
+  deleteCategory,
+  updateCategory,
+  bulkUpdateProducts,
+  getInventoryStats,
+  getNotifications,
+  getProductReviews,
+  handleReviewAction,
+  bulkEditProducts,
+  uploadCSV,
+  createDiscount
 } = require('../controllers/adminController');
 const { protect, admin } = require('../middlewares/auth');
 const { 
@@ -70,6 +83,8 @@ router.delete('/plants/:id', validateObjectId, deletePlant);
 // Order management
 router.get('/orders', validatePagination, getAllOrders);
 router.put('/orders/:id/status', validateObjectId, updateOrderStatus);
+router.post('/orders/:id/send-email', validateObjectId, sendOrderEmail);
+router.post('/orders/send-notification', sendOrderStatusNotification);
 
 // Blog management
 router.get('/blog', validatePagination, getAllBlogPosts);
@@ -81,6 +96,16 @@ router.put('/blog/:id/comments/:commentId/approve', validateObjectId, toggleComm
 // Product management
 router.get('/products', validatePagination, getAllProducts);
 router.get('/products/categories', getProductCategories);
+router.get('/products/categories-with-products', getCategoriesWithProducts);
+router.post('/products/categories', createCategory);
+router.delete('/products/categories/:categoryName', deleteCategory);
+router.put('/products/categories/:oldCategoryName', updateCategory);
+router.get('/products/inventory-stats', getInventoryStats);
+router.get('/products/reviews', getProductReviews);
+router.put('/products/reviews/:id/:action', handleReviewAction);
+router.put('/products/bulk-edit', bulkEditProducts);
+router.post('/products/upload-csv', uploadCSV);
+router.post('/products/discounts', createDiscount);
 router.get('/products/:id', validateObjectId, getProduct);
 router.post('/products', createProduct);
 router.put('/products/:id', validateObjectId, updateProduct);
@@ -88,5 +113,8 @@ router.put('/products/:id/archive', validateObjectId, archiveProduct);
 router.put('/products/:id/restore', validateObjectId, restoreProduct);
 router.delete('/products/:id', validateObjectId, deleteProduct);
 router.put('/products/bulk', bulkUpdateProducts);
+
+// Notifications
+router.get('/notifications', getNotifications);
 
 module.exports = router;

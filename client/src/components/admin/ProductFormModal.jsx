@@ -246,20 +246,15 @@ const ProductFormModal = ({ title, formData, setFormData, onSubmit, onClose, cat
                   required
                 >
                   <option value="">Select Category</option>
-                  <option value="Tools">Tools</option>
-                  <option value="Fertilizers">Fertilizers</option>
-                  <option value="Pots">Pots</option>
-                  <option value="Watering Cans">Watering Cans</option>
-                  <option value="Soil & Compost">Soil & Compost</option>
-                  <option value="Plant Care">Plant Care</option>
-                  <option value="Garden Accessories">Garden Accessories</option>
-                  <option value="Indoor Growing">Indoor Growing</option>
-                  <option value="Outdoor Growing">Outdoor Growing</option>
-                  <option value="Seeds">Seeds</option>
-                  <option value="Planters">Planters</option>
-                  <option value="Garden Tools">Garden Tools</option>
-                  <option value="Plant Food">Plant Food</option>
-                  <option value="Pest Control">Pest Control</option>
+                  {categories && categories.length > 0 ? (
+                    categories.map((category) => (
+                      <option key={category._id} value={category._id}>
+                        {category._id}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>No categories available</option>
+                  )}
                 </select>
               </div>
               

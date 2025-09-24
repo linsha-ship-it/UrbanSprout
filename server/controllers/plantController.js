@@ -1,3 +1,4 @@
+const PlantSuggestion = require('../models/PlantSuggestion');
 const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
@@ -21,6 +22,90 @@ const loadPlantData = () => {
 
 // Initialize plant data on startup
 loadPlantData().catch(console.error);
+
+// New function for getting plant suggestions based on user combinations
+const getPlantSuggestionsByCombination = async (req, res) => {
+  try {
+    const { space, sunlight, experience, time, purpose } = req.body;
+
+    // Validate required fields
+    if (!space || !sunlight || !experience || !time || !purpose) {
+      return res.status(400).json({
+        success: false,
+        message: 'All combination parameters are required: space, sunlight, experience, time, purpose'
+      });
+    }
+
+    // Create combination key
+    const combinationKey = `${space}_${sunlight}_${experience}_${time}_${purpose}`;
+
+    // Find plant suggestions for this combination
+    const plantSuggestion = await PlantSuggestion.findOne({ 
+      combinationKey,
+      isActive: true 
+    });
+
+    if (!plantSuggestion) {
+      // If no specific combination found, try to find a similar one or return default
+      const fallbackSuggestion = await PlantSuggestion.findOne({
+        space,
+        sunlight,
+        experience,
+        isActive: true
+      });
+
+      if (!fallbackSuggestion) {
+        // Return a default combination
+        const defaultSuggestion = await PlantSuggestion.findOne({
+          space: 'small',
+          sunlight: 'full_sun',
+          experience: 'beginner',
+          time: 'low',
+          purpose: 'food',
+          isActive: true
+        });
+
+        if (!defaultSuggestion) {
+          return res.status(404).json({
+            success: false,
+            message: 'No plant suggestions found for this combination'
+          });
+        }
+
+        return res.json({
+          success: true,
+          plants: defaultSuggestion.plants,
+          recommendationMessage: defaultSuggestion.recommendationMessage,
+          combinationKey: defaultSuggestion.combinationKey,
+          isDefault: true
+        });
+      }
+
+      return res.json({
+        success: true,
+        plants: fallbackSuggestion.plants,
+        recommendationMessage: fallbackSuggestion.recommendationMessage,
+        combinationKey: fallbackSuggestion.combinationKey,
+        isFallback: true
+      });
+    }
+
+    res.json({
+      success: true,
+      plants: plantSuggestion.plants,
+      recommendationMessage: plantSuggestion.recommendationMessage,
+      combinationKey: plantSuggestion.combinationKey
+    });
+
+  } catch (error) {
+    console.error('Error getting plant suggestions by combination:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching plant suggestions',
+      error: error.message
+    });
+  }
+};
 
 const suggestPlants = async (req, res) => {
   try {
@@ -204,6 +289,7 @@ const getPlantById = async (req, res) => {
 
 module.exports = {
   suggestPlants,
+  getPlantSuggestionsByCombination,
   getAllPlants,
   getPlantById
 };

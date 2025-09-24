@@ -29,6 +29,7 @@ class NotificationService {
         title: notificationData.title,
         message: notificationData.message,
         relatedId: notificationData.relatedId,
+        relatedModel: notificationData.relatedModel,
         isRead: false
       });
 
@@ -43,7 +44,8 @@ class NotificationService {
           title: notification.title,
           message: notification.message,
           createdAt: notification.createdAt,
-          relatedId: notification.relatedId
+          relatedId: notification.relatedId,
+          relatedModel: notification.relatedModel
         });
         console.log(`Real-time notification sent to user ${userId}`);
       }
@@ -167,5 +169,7 @@ class NotificationService {
 }
 
 module.exports = new NotificationService();
+
+
 
 

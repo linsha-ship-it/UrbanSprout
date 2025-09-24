@@ -12,7 +12,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['blog_approved', 'blog_rejected', 'comment_approved', 'comment_rejected', 'general'],
+    enum: ['blog_approved', 'blog_rejected', 'blog_deleted', 'comment_approved', 'comment_rejected', 'order_status_update', 'order_shipped', 'order_delivered', 'order_cancelled', 'general'],
     required: true
   },
   title: {
@@ -25,7 +25,12 @@ const notificationSchema = new mongoose.Schema({
   },
   relatedId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Blog'
+    refPath: 'relatedModel'
+  },
+  relatedModel: {
+    type: String,
+    enum: ['Blog', 'Order'],
+    required: false
   },
   isRead: {
     type: Boolean,

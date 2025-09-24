@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Tag
 } from 'lucide-react';
+import { apiCall } from '../../utils/api';
 
 const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
   const [newCategory, setNewCategory] = useState('');
@@ -27,19 +28,41 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
       return;
     }
 
-    if (predefinedCategories.includes(newCategory)) {
-      setMessage('This category already exists');
-      return;
-    }
+    try {
+      // Check if category already exists in the database
+      const existingCategories = await apiCall('/admin/products/categories');
+      if (existingCategories.success) {
+        const categoryExists = existingCategories.data.categories.some(
+          cat => cat._id.toLowerCase() === newCategory.trim().toLowerCase()
+        );
+        if (categoryExists) {
+          setMessage('This category already exists');
+          return;
+        }
+      }
 
-    // In a real implementation, you would call an API to add the category
-    // For now, we'll just show a success message
-    setMessage('Category added successfully');
-    setNewCategory('');
-    setTimeout(() => {
-      setMessage('');
-      onUpdate();
-    }, 2000);
+      // Create the category
+      const response = await apiCall('/admin/products/categories', {
+        method: 'POST',
+        body: JSON.stringify({ categoryName: newCategory.trim() })
+      });
+
+      if (response.success) {
+        setMessage(response.message);
+        setNewCategory('');
+        // Immediately refresh the categories list
+        onUpdate();
+        // Clear message after a delay
+        setTimeout(() => {
+          setMessage('');
+        }, 3000);
+      } else {
+        setMessage(response.message || 'Failed to create category');
+      }
+    } catch (error) {
+      console.error('Error adding category:', error);
+      setMessage('Error adding category: ' + error.message);
+    }
   };
 
   const handleEditCategory = (category) => {
@@ -53,14 +76,36 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
       return;
     }
 
-    // In a real implementation, you would call an API to update the category
-    setMessage('Category updated successfully');
-    setEditingCategory(null);
-    setEditName('');
-    setTimeout(() => {
-      setMessage('');
-      onUpdate();
-    }, 2000);
+    if (editName.trim() === editingCategory._id) {
+      setMessage('No changes made');
+      setEditingCategory(null);
+      setEditName('');
+      return;
+    }
+
+    try {
+      const response = await apiCall(`/admin/products/categories/${encodeURIComponent(editingCategory._id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ newCategoryName: editName.trim() })
+      });
+
+      if (response.success) {
+        setMessage(response.message);
+        setEditingCategory(null);
+        setEditName('');
+        // Immediately refresh the categories list
+        onUpdate();
+        // Clear message after a delay
+        setTimeout(() => {
+          setMessage('');
+        }, 3000);
+      } else {
+        setMessage(response.message || 'Failed to update category');
+      }
+    } catch (error) {
+      console.error('Error updating category:', error);
+      setMessage('Error updating category: ' + error.message);
+    }
   };
 
   const handleDeleteCategory = async (category) => {
@@ -73,12 +118,26 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
       return;
     }
 
-    // In a real implementation, you would call an API to delete the category
-    setMessage('Category deleted successfully');
-    setTimeout(() => {
-      setMessage('');
-      onUpdate();
-    }, 2000);
+    try {
+      const response = await apiCall(`/admin/products/categories/${encodeURIComponent(category._id)}`, {
+        method: 'DELETE'
+      });
+
+      if (response.success) {
+        setMessage(response.message);
+        // Immediately refresh the categories list
+        onUpdate();
+        // Clear message after a delay
+        setTimeout(() => {
+          setMessage('');
+        }, 3000);
+      } else {
+        setMessage(response.message || 'Failed to delete category');
+      }
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      setMessage('Error deleting category: ' + error.message);
+    }
   };
 
   return (
@@ -129,47 +188,8 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
             </div>
           </div>
 
-          {/* Predefined Categories */}
-          <div className="mb-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Predefined Categories</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {predefinedCategories.map((category) => {
-                const categoryData = categories.find(c => c._id === category);
-                const productCount = categoryData ? categoryData.count : 0;
-                
-                return (
-                  <div key={category} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
-                    <div className="flex items-center">
-                      <Tag className="h-4 w-4 text-gray-400 mr-2" />
-                      <span className="text-sm font-medium text-gray-900">{category}</span>
-                      <span className="ml-2 text-xs text-gray-500">({productCount})</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <button
-                        onClick={() => handleEditCategory({ _id: category, count: productCount })}
-                        className="p-1 text-blue-600 hover:text-blue-500"
-                        title="Edit category"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </button>
-                      {productCount === 0 && (
-                        <button
-                          onClick={() => handleDeleteCategory({ _id: category, count: productCount })}
-                          className="p-1 text-red-600 hover:text-red-500"
-                          title="Delete category"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Existing Categories */}
-          {categories.length > 0 && (
+          {categories.length > 0 ? (
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-3">Existing Categories</h3>
               <div className="space-y-2">
@@ -235,6 +255,11 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
                   </div>
                 ))}
               </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <Tag className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p>No categories found. Add your first category above.</p>
             </div>
           )}
 

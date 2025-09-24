@@ -77,3 +77,5 @@ echo ""
 echo "🎉 Once configured, registration emails will be sent automatically!"
 
 
+
+

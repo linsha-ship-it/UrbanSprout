@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { FaLeaf, FaTrash, FaFileAlt, FaCheckCircle, FaTimesCircle, FaClock, FaJournalWhills } from 'react-icons/fa';
+import { FaFileAlt, FaCheckCircle, FaTimesCircle, FaClock, FaJournalWhills } from 'react-icons/fa';
 import { apiCall } from '../../utils/api';
 import { useNavigate } from 'react-router-dom';
 
@@ -8,33 +8,9 @@ const BeginnerDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   
-  // My Garden state sourced from localStorage written by the chatbot
-  const [garden, setGarden] = useState([]);
-  
   // Blog posts state
   const [blogPosts, setBlogPosts] = useState([]);
   const [loadingBlogs, setLoadingBlogs] = useState(false);
-
-  const getPossibleKeys = () => {
-    const ids = [user?.id, user?.uid, user?.email, 'guest'].filter(Boolean);
-    // Deduplicate keys
-    return Array.from(new Set(ids.map(v => `my_garden_${v}`)));
-  };
-
-  const loadGarden = () => {
-    for (const key of getPossibleKeys()) {
-      const val = localStorage.getItem(key);
-      if (val) {
-        try { return JSON.parse(val); } catch { return []; }
-      }
-    }
-    return [];
-  };
-
-  const persistGarden = (plants) => {
-    const key = `my_garden_${user?.id || user?.uid || user?.email || 'guest'}`;
-    localStorage.setItem(key, JSON.stringify(plants));
-  };
 
   // Load user's blog posts
   const loadBlogPosts = async () => {
@@ -54,24 +30,9 @@ const BeginnerDashboard = () => {
   };
 
   useEffect(() => {
-    setGarden(loadGarden());
     loadBlogPosts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.uid, user?.email]);
-
-  const removePlant = (name) => {
-    setGarden(prev => {
-      const next = prev.filter(p => p !== name);
-      persistGarden(next);
-      return next;
-    });
-  };
-
-  const clearGarden = () => {
-    const key = `my_garden_${user?.id || user?.uid || user?.email || 'guest'}`;
-    localStorage.setItem(key, JSON.stringify([]));
-    setGarden([]);
-  };
 
   const handleLogout = () => {
     logout();
@@ -108,82 +69,6 @@ const BeginnerDashboard = () => {
           </div>
         </div>
 
-        {/* Content Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Getting Started */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Getting Started</h3>
-            <div className="space-y-4">
-              <div className="flex items-start">
-                <div className="bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-3 mt-0.5">
-                  1
-                </div>
-                <div>
-                  <h4 className="font-medium text-gray-900">Choose Your First Plant</h4>
-                  <p className="text-gray-600 text-sm">Start with easy-care plants like pothos or snake plants</p>
-                </div>
-              </div>
-              <div className="flex items-start">
-                <div className="bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-3 mt-0.5">
-                  2
-                </div>
-                <div>
-                  <h4 className="font-medium text-gray-900">Learn Basic Care</h4>
-                  <p className="text-gray-600 text-sm">Understand watering, lighting, and feeding basics</p>
-                </div>
-              </div>
-              <div className="flex items-start">
-                <div className="bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-3 mt-0.5">
-                  3
-                </div>
-                <div>
-                  <h4 className="font-medium text-gray-900">Join the Community</h4>
-                  <p className="text-gray-600 text-sm">Share your progress and get support</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* My Garden */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">My Garden</h3>
-              {garden.length > 0 && (
-                <button
-                  onClick={clearGarden}
-                  className="text-sm inline-flex items-center px-3 py-1.5 rounded-md bg-red-50 text-red-600 hover:bg-red-100"
-                >
-                  <FaTrash className="mr-1" /> Clear all
-                </button>
-              )}
-            </div>
-
-            {garden.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">
-                <FaLeaf className="text-4xl text-gray-300 mx-auto mb-2" />
-                <p>No plants saved yet</p>
-                <p className="text-sm">Use "Add to my Garden" in the Plant Suggestion assistant</p>
-              </div>
-            ) : (
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {garden.map((name) => (
-                  <li
-                    key={name}
-                    className="flex items-center justify-between border rounded-lg px-3 py-2"
-                  >
-                    <span className="text-gray-800 font-medium">{name}</span>
-                    <button
-                      onClick={() => removePlant(name)}
-                      className="text-xs text-red-600 hover:text-red-700"
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
 
         {/* Blog Posts Status */}
         <div className="mt-8 bg-white rounded-lg shadow p-6">
