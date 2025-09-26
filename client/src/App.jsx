@@ -34,6 +34,7 @@ import VendorDashboard from './pages/dashboard/VendorDashboard'
 // Import My Garden Journal components
 import MyGardenJournal from './pages/MyGardenJournal'
 import PlantDetail from './pages/PlantDetail'
+import NotificationDebug from './pages/NotificationDebug'
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredRole = null, allowedRoles = [], redirectToSignup = false }) => {
@@ -124,6 +125,11 @@ const App = () => {
           <Route path="/profile" element={
             <ProtectedRoute>
               <Profile />
+            </ProtectedRoute>
+          } />
+          <Route path="/notification-debug" element={
+            <ProtectedRoute>
+              <NotificationDebug />
             </ProtectedRoute>
           } />
           <Route path="/dashboard" element={

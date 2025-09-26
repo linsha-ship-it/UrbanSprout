@@ -110,11 +110,11 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
 
   const handleDeleteCategory = async (category) => {
     if (category.count > 0) {
-      setMessage(`Cannot delete category "${category._id}" - it has ${category.count} products`);
+      setMessage(`Cannot delete category "${category._id}" - it has ${category.count} products. Please move or delete the products first.`);
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete the category "${category._id}"?`)) {
+    if (!window.confirm(`Are you sure you want to delete the category "${category._id}"? This action cannot be undone.`)) {
       return;
     }
 
@@ -124,7 +124,7 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
       });
 
       if (response.success) {
-        setMessage(response.message);
+        setMessage(`✅ ${response.message}`);
         // Immediately refresh the categories list
         onUpdate();
         // Clear message after a delay
@@ -132,11 +132,11 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
           setMessage('');
         }, 3000);
       } else {
-        setMessage(response.message || 'Failed to delete category');
+        setMessage(`❌ ${response.message || 'Failed to delete category'}`);
       }
     } catch (error) {
       console.error('Error deleting category:', error);
-      setMessage('Error deleting category: ' + error.message);
+      setMessage(`❌ Error deleting category: ${error.message}`);
     }
   };
 
@@ -160,7 +160,13 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
           {/* Message */}
           {message && (
             <div className={`mb-4 p-3 rounded-lg text-sm ${
-              message.includes('successfully') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              message.includes('✅') 
+                ? 'bg-green-100 text-green-700 border border-green-200' 
+                : message.includes('❌') 
+                ? 'bg-red-100 text-red-700 border border-red-200'
+                : message.includes('successfully') 
+                ? 'bg-green-100 text-green-700' 
+                : 'bg-red-100 text-red-700'
             }`}>
               {message}
             </div>
@@ -240,15 +246,22 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
                           >
                             <Edit className="h-3 w-3" />
                           </button>
-                          {category.count === 0 && (
-                            <button
-                              onClick={() => handleDeleteCategory(category)}
-                              className="p-1 text-red-600 hover:text-red-500"
-                              title="Delete category"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleDeleteCategory(category)}
+                            className={`p-1 ${
+                              category.count === 0 
+                                ? 'text-red-600 hover:text-red-500' 
+                                : 'text-gray-400 cursor-not-allowed'
+                            }`}
+                            title={
+                              category.count === 0 
+                                ? 'Delete category' 
+                                : `Cannot delete category - it has ${category.count} products`
+                            }
+                            disabled={category.count > 0}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
                         </div>
                       </>
                     )}
@@ -270,9 +283,10 @@ const CategoryManagementModal = ({ categories, onClose, onUpdate }) => {
               <div className="text-sm text-yellow-800">
                 <p className="font-medium">Important Notes:</p>
                 <ul className="mt-1 list-disc list-inside space-y-1">
-                  <li>Categories with products cannot be deleted</li>
-                  <li>Deleting a category will affect all products using it</li>
+                  <li>Categories with products cannot be deleted (delete button will be disabled)</li>
+                  <li>To delete a category, first move or delete all products in that category</li>
                   <li>Category names are case-sensitive</li>
+                  <li>Deleting a category is permanent and cannot be undone</li>
                 </ul>
               </div>
             </div>

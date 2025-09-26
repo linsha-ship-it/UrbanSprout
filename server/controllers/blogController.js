@@ -2,6 +2,7 @@ const Blog = require('../models/Blog');
 const User = require('../models/User');
 const { AppError } = require('../middlewares/errorHandler');
 const { asyncHandler } = require('../middlewares/errorHandler');
+const notificationService = require('../utils/notificationService');
 
 // @desc    Get all blog posts
 // @route   GET /api/blog
@@ -224,6 +225,24 @@ const toggleLike = asyncHandler(async (req, res, next) => {
       userEmail: userEmail,
       userId: req.user._id 
     });
+
+    // Send notification to blog author (only if it's not the author liking their own post)
+    if (post.authorId.toString() !== req.user._id.toString()) {
+      try {
+        await notificationService.sendNotification(post.authorId, {
+          userEmail: post.authorEmail,
+          type: 'blog_like',
+          title: '❤️ New Like!',
+          message: `Someone liked your blog post "${post.title}"`,
+          relatedId: post._id,
+          relatedModel: 'Blog'
+        });
+        console.log(`✅ Blog like notification sent to ${post.authorEmail}`);
+      } catch (notificationError) {
+        console.error('❌ Failed to send blog like notification:', notificationError);
+        // Don't fail the like if notification fails
+      }
+    }
   }
 
   await post.save();
@@ -330,6 +349,24 @@ const addComment = asyncHandler(async (req, res, next) => {
 
   const newComment = post.comments[post.comments.length - 1];
 
+  // Send notification to blog author (only if it's not the author commenting on their own post)
+  if (post.authorId.toString() !== req.user._id.toString()) {
+    try {
+      await notificationService.sendNotification(post.authorId, {
+        userEmail: post.authorEmail,
+        type: 'blog_comment',
+        title: '💬 New Comment!',
+        message: `Someone commented on your blog post "${post.title}"`,
+        relatedId: post._id,
+        relatedModel: 'Blog'
+      });
+      console.log(`✅ Blog comment notification sent to ${post.authorEmail}`);
+    } catch (notificationError) {
+      console.error('❌ Failed to send blog comment notification:', notificationError);
+      // Don't fail the comment if notification fails
+    }
+  }
+
   res.status(201).json({
     success: true,
     message: 'Comment added successfully',
@@ -429,6 +466,22 @@ const approvePost = asyncHandler(async (req, res, next) => {
 
   await post.save();
 
+  // Send notification to blog author
+  try {
+    await notificationService.sendNotification(post.authorId, {
+      userEmail: post.authorEmail,
+      type: 'blog_approved',
+      title: '✅ Blog Post Approved!',
+      message: `Your blog post "${post.title}" has been approved and is now live on the feed!`,
+      relatedId: post._id,
+      relatedModel: 'Blog'
+    });
+    console.log(`✅ Blog approval notification sent to ${post.authorEmail}`);
+  } catch (notificationError) {
+    console.error('❌ Failed to send blog approval notification:', notificationError);
+    // Don't fail the approval if notification fails
+  }
+
   res.json({
     success: true,
     message: 'Blog post approved successfully',
@@ -459,6 +512,22 @@ const rejectPost = asyncHandler(async (req, res, next) => {
   post.rejectedAt = new Date();
 
   await post.save();
+
+  // Send notification to blog author
+  try {
+    await notificationService.sendNotification(post.authorId, {
+      userEmail: post.authorEmail,
+      type: 'blog_rejected',
+      title: '❌ Blog Post Rejected',
+      message: `Your blog post "${post.title}" has been rejected. Reason: ${reason.trim()}`,
+      relatedId: post._id,
+      relatedModel: 'Blog'
+    });
+    console.log(`✅ Blog rejection notification sent to ${post.authorEmail}`);
+  } catch (notificationError) {
+    console.error('❌ Failed to send blog rejection notification:', notificationError);
+    // Don't fail the rejection if notification fails
+  }
 
   res.json({
     success: true,

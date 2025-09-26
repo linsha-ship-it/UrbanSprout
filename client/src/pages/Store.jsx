@@ -35,57 +35,205 @@ const Store = () => {
     phone: ''
   })
   const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMoreProducts, setHasMoreProducts] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
   const [paymentMethod, setPaymentMethod] = useState('cod')
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [showOrderSummary, setShowOrderSummary] = useState(false)
 
-  // Load products from API
-  const loadProducts = async () => {
+  // Ensure products are unique by ID
+  const ensureUniqueProducts = (productList) => {
+    const uniqueProducts = productList.filter((product, index, self) => 
+      index === self.findIndex(p => p._id === product._id)
+    )
+    if (uniqueProducts.length !== productList.length) {
+      console.log(`Removed ${productList.length - uniqueProducts.length} duplicate products`)
+    }
+    return uniqueProducts
+  }
+
+  // Clear any cached data
+  const clearCache = () => {
+    // Clear any potential localStorage cache
+    localStorage.removeItem('store_products_cache')
+    localStorage.removeItem('store_categories_cache')
+    console.log('Cache cleared')
+  }
+
+  // Load products from API with pagination
+  const loadProducts = async (page = 1, reset = false) => {
     try {
-      setLoading(true)
-      console.log('Loading products from API...')
-      const response = await apiCall('/store')
+      if (reset) {
+        setLoading(true)
+        setCurrentPage(1)
+      } else {
+        setLoadingMore(true)
+      }
+      
+      console.log(`Loading products from API - page ${page}, category: ${selectedCategory}...`)
+      const categoryParam = selectedCategory && selectedCategory !== 'all' ? `&category=${encodeURIComponent(selectedCategory)}` : ''
+      const timestamp = Date.now() // Cache busting
+      const apiUrl = `/store?page=${page}&limit=12${categoryParam}&_t=${timestamp}`
+      console.log('API URL:', apiUrl)
+      const response = await apiCall(apiUrl)
       console.log('API response:', response)
       
       if (response.success && response.data && response.data.products) {
-        setProducts(response.data.products)
-        console.log('Products loaded successfully:', response.data.products.length)
+        const uniqueNewProducts = ensureUniqueProducts(response.data.products)
+        
+        if (reset) {
+          console.log('Resetting products, new count:', uniqueNewProducts.length)
+          setProducts(uniqueNewProducts)
+        } else {
+          console.log('Adding more products, current:', products.length, 'new:', uniqueNewProducts.length)
+          setProducts(prev => {
+            const combinedProducts = [...prev, ...uniqueNewProducts]
+            const uniqueCombinedProducts = ensureUniqueProducts(combinedProducts)
+            console.log('Total products after addition:', uniqueCombinedProducts.length)
+            return uniqueCombinedProducts
+          })
+        }
+        
+        // Check if there are more products
+        const totalPages = response.data.pagination?.pages || 1
+        setHasMoreProducts(page < totalPages)
+        setCurrentPage(page)
+        
+        console.log(`Products loaded successfully: ${response.data.products.length} (page ${page}/${totalPages})`)
+        console.log(`Total products now displayed: ${reset ? response.data.products.length : products.length + response.data.products.length}`)
       } else {
         console.error('API response invalid:', response)
-        setProducts([]) // Set empty array as fallback
+        if (reset) {
+          setProducts([])
+        }
       }
     } catch (error) {
       console.error('Error loading products:', error)
-      setProducts([]) // Set empty array as fallback
+      if (reset) {
+        setProducts([])
+      }
     } finally {
       setLoading(false)
+      setLoadingMore(false)
+    }
+  }
+
+  // Load more products for infinite scroll
+  const loadMoreProducts = () => {
+    if (!loadingMore && hasMoreProducts) {
+      loadProducts(currentPage + 1, false)
+    }
+  }
+
+  // Handle category change
+  const handleCategoryChange = (categoryId) => {
+    console.log('Category changed to:', categoryId)
+    console.log('Previous products count:', products.length)
+    setSelectedCategory(categoryId)
+    // Reset all pagination state
+    setCurrentPage(1)
+    setHasMoreProducts(true)
+    // Reset products and load first page of selected category
+    loadProducts(1, true)
+  }
+
+  // Load categories from API
+  const loadCategories = async () => {
+    try {
+      console.log('Loading categories from API...')
+      const timestamp = Date.now() // Cache busting
+      const response = await apiCall(`/store/categories?_t=${timestamp}`)
+      console.log('Categories API response:', response)
+      
+      if (response.success && response.data && response.data.categories) {
+        // Format categories for the store page
+        const formattedCategories = response.data.categories.map(cat => ({
+          id: cat._id,
+          name: cat._id
+        }))
+        
+        // Add "All Products" option at the beginning
+        const allCategories = [
+          { id: 'all', name: 'All Products' },
+          ...formattedCategories
+        ]
+        
+        setCategories(allCategories)
+        console.log('Categories loaded successfully:', allCategories.length)
+      } else {
+        console.error('Categories API response invalid:', response)
+        // Fallback: extract categories from products
+        const uniqueCategories = [...new Set(products.map(product => product.category))].filter(cat => cat)
+        const fallbackCategories = [
+          { id: 'all', name: 'All Products' },
+          ...uniqueCategories.map(cat => ({
+            id: cat,
+            name: cat
+          }))
+        ]
+        setCategories(fallbackCategories)
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error)
+      // Fallback: extract categories from products
+      const uniqueCategories = [...new Set(products.map(product => product.category))].filter(cat => cat)
+      const fallbackCategories = [
+        { id: 'all', name: 'All Products' },
+        ...uniqueCategories.map(cat => ({
+          id: cat,
+          name: cat
+        }))
+      ]
+      setCategories(fallbackCategories)
     }
   }
 
   // Load cart and wishlist from database on component mount
   useEffect(() => {
-    loadProducts()
-    if (user) {
-      // Load from database
-      loadCartFromDB()
-      loadWishlistFromDB()
+    const initializeData = async () => {
+      clearCache() // Clear any cached data first
+      await loadProducts(1, true)
+      await loadCategories()
       
-      // Sync guest data to user account
-      syncGuestDataToUser()
-    } else {
-      // For guest users, use localStorage
-      const savedCart = localStorage.getItem('cart_guest')
-      const savedWishlist = localStorage.getItem('wishlist_guest')
-      
-      if (savedCart) {
-        setCart(JSON.parse(savedCart))
-      }
-      if (savedWishlist) {
-        setWishlist(JSON.parse(savedWishlist))
+      if (user) {
+        // Load from database
+        loadCartFromDB()
+        loadWishlistFromDB()
+        
+        // Sync guest data to user account
+        syncGuestDataToUser()
+      } else {
+        // For guest users, use localStorage
+        const savedCart = localStorage.getItem('cart_guest')
+        const savedWishlist = localStorage.getItem('wishlist_guest')
+        
+        if (savedCart) {
+          setCart(JSON.parse(savedCart))
+        }
+        if (savedWishlist) {
+          setWishlist(JSON.parse(savedWishlist))
+        }
       }
     }
+    
+    initializeData()
   }, [user])
+
+  // Infinite scroll effect
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.innerHeight + document.documentElement.scrollTop >= document.documentElement.offsetHeight - 1000) {
+        loadMoreProducts()
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [loadingMore, hasMoreProducts, currentPage])
+
 
   // Sync guest cart/wishlist to user account when they log in
   const syncGuestDataToUser = async () => {
@@ -259,19 +407,6 @@ const Store = () => {
   // Products are now loaded from API via loadProducts() function
 
 
-  // Calculate category counts dynamically
-  const getCategoryCount = (categoryId) => {
-    if (categoryId === 'all') return (products || []).length
-    return (products || []).filter(product => product.category === categoryId).length
-  }
-
-  const categories = [
-    { id: 'all', name: 'All Products', count: getCategoryCount('all') },
-    { id: 'Fertilizers', name: 'Fertilizers', count: getCategoryCount('Fertilizers') },
-    { id: 'Tools', name: 'Gardening Tools', count: getCategoryCount('Tools') },
-    { id: 'Pots', name: 'Pots & Planters', count: getCategoryCount('Pots') },
-    { id: 'Watering Cans', name: 'Watering Cans', count: getCategoryCount('Watering Cans') }
-  ]
 
   // Cart functions
   const addToCart = async (product) => {
@@ -676,10 +811,8 @@ const Store = () => {
     return wishlist.some(item => (item.id || item._id) === productId)
   }
 
-  // Filter products based on category, price, and search
+  // Filter products based on price and search (category filtering is now server-side)
   const filteredProducts = (products || []).filter(product => {
-    const categoryMatch = selectedCategory === 'all' || product.category === selectedCategory
-    
     // Use currentPrice (discountPrice if available, otherwise regularPrice)
     const currentPrice = product.discountPrice || product.regularPrice || product.price || 0
     const priceMatch = (!minPrice || currentPrice >= parseInt(minPrice)) && 
@@ -688,10 +821,13 @@ const Store = () => {
     const searchMatch = !searchQuery || 
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase()))
-    return categoryMatch && priceMatch && searchMatch
+    return priceMatch && searchMatch
   })
 
   console.log('Store component about to render, products:', (products || []).length)
+  console.log('Selected category:', selectedCategory)
+  console.log('Filtered products:', filteredProducts.length)
+  console.log('Categories available:', categories.length)
   
   return (
     <div className="min-h-screen bg-cream-50">
@@ -780,17 +916,14 @@ const Store = () => {
                   {(categories || []).map((category) => (
                     <button
                       key={category.id}
-                      onClick={() => setSelectedCategory(category.id)}
+                      onClick={() => handleCategoryChange(category.id)}
                       className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
                         selectedCategory === category.id
                           ? 'bg-forest-green-100 text-forest-green-700'
                           : 'text-forest-green-600 hover:bg-forest-green-50'
                       }`}
                     >
-                      <div className="flex justify-between items-center">
-                        <span>{category.name}</span>
-                        <span className="text-sm text-forest-green-400">({category.count})</span>
-                      </div>
+                      <span>{category.name}</span>
                     </button>
                   ))}
                 </div>
@@ -868,7 +1001,10 @@ const Store = () => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <div className="flex items-center space-x-4">
                 <span className="text-forest-green-600">
-                  Showing {filteredProducts.length} products
+                  {hasMoreProducts 
+                    ? `Showing ${filteredProducts.length} of ${products.length}+ products` 
+                    : `Showing all ${filteredProducts.length} products`
+                  }
                 </span>
               </div>
               
@@ -1044,6 +1180,46 @@ const Store = () => {
                   </div>
                 </motion.div>
               ))}
+              </div>
+            )}
+
+            {/* Load More Button and Loading Indicator */}
+            {hasMoreProducts && (
+              <div className="flex justify-center mt-8">
+                <button
+                  onClick={loadMoreProducts}
+                  disabled={loadingMore}
+                  className="px-6 py-3 bg-forest-green-500 text-cream-100 rounded-lg hover:bg-forest-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {loadingMore ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-cream-100 mr-2"></div>
+                      Loading more products...
+                    </>
+                  ) : (
+                    <>
+                      <span>Load More Products</span>
+                      <span className="ml-2 text-sm opacity-75">({products.length} shown so far)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* End of products message */}
+            {!hasMoreProducts && products.length > 0 && (
+              <div className="text-center mt-12 py-8 bg-gradient-to-r from-forest-green-50 to-cream-50 rounded-2xl border border-forest-green-100">
+                <div className="max-w-md mx-auto">
+                  <div className="text-6xl mb-4">🌱</div>
+                  <h3 className="text-2xl font-bold text-forest-green-800 mb-2">Thank you for choosing us!</h3>
+                  <p className="text-forest-green-600 mb-4">
+                    We hope you found what you were looking for.
+                  </p>
+                  <div className="flex items-center justify-center space-x-2 text-sm text-forest-green-500">
+                    <span>Happy Gardening!</span>
+                    <span>🌿</span>
+                  </div>
+                </div>
               </div>
             )}
 

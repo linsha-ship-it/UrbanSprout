@@ -329,6 +329,64 @@ router.get('/saved', auth, async (req, res) => {
   }
 })
 
+// GET /api/blog/trending-hashtags - Get trending hashtags based on actual usage
+router.get('/trending-hashtags', async (req, res) => {
+  try {
+    const { limit = 5 } = req.query
+    
+    // Aggregate to get trending hashtags from published and approved posts
+    const trendingHashtags = await Blog.aggregate([
+      {
+        $match: {
+          status: 'published',
+          approvalStatus: 'approved',
+          tags: { $exists: true, $ne: [] }
+        }
+      },
+      {
+        $unwind: '$tags'
+      },
+      {
+        $group: {
+          _id: '$tags',
+          count: { $sum: 1 },
+          recentPosts: { $sum: 1 } // Count of posts using this tag
+        }
+      },
+      {
+        $match: {
+          _id: { $ne: null, $ne: '' } // Exclude null/empty tags
+        }
+      },
+      {
+        $sort: { count: -1 }
+      },
+      {
+        $limit: parseInt(limit)
+      },
+      {
+        $project: {
+          _id: 0,
+          tag: { $concat: ['#', '$_id'] },
+          count: 1,
+          trend: 'up' // For now, we'll show all as trending up
+        }
+      }
+    ])
+    
+    res.json({
+      success: true,
+      data: trendingHashtags
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching trending hashtags',
+      error: error.message
+    })
+  }
+})
+
 // GET /api/blog/:id - Get a single blog post
 router.get('/:id', async (req, res) => {
   try {

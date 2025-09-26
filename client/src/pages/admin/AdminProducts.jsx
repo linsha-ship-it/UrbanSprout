@@ -26,10 +26,6 @@ import {
   X,
   Save,
   Tag,
-  Bell,
-  TrendingUp,
-  TrendingDown,
-  PieChart,
   FileSpreadsheet,
   Download,
   Percent,
@@ -37,7 +33,6 @@ import {
   DollarSign,
   ShoppingCart,
   Users,
-  MessageSquare,
   ThumbsUp,
   ThumbsDown,
   Filter as FilterIcon,
@@ -63,9 +58,7 @@ const AdminProducts = () => {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [selectedProducts, setSelectedProducts] = useState([]);
-  const [activeTab, setActiveTab] = useState('products');
   const [inventoryStats, setInventoryStats] = useState(null);
-  const [notifications, setNotifications] = useState([]);
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [showReviewsModal, setShowReviewsModal] = useState(false);
@@ -105,7 +98,6 @@ const AdminProducts = () => {
     loadProducts();
     loadCategories();
     loadInventoryStats();
-    loadNotifications();
     loadReviews();
     loadCategoriesWithProducts();
   }, [currentPage, searchTerm, filterCategory, filterStatus, filterFeatured, filterStock, filterPriceRange, sortBy, sortOrder]);
@@ -146,9 +138,20 @@ const AdminProducts = () => {
       const response = await apiCall('/admin/products/categories');
       if (response.success) {
         setCategories(response.data.categories);
+      } else {
+        // Fallback: get categories from products
+        const productsResponse = await apiCall('/admin/products?limit=1000');
+        if (productsResponse.success) {
+          const uniqueCategories = [...new Set(productsResponse.data.products.map(product => product.category))];
+          const categoryObjects = uniqueCategories.filter(cat => cat).map(cat => ({ _id: cat }));
+          setCategories(categoryObjects);
+        }
       }
     } catch (error) {
       console.error('Error loading categories:', error);
+      // Fallback: use static categories if API fails
+      const staticCategories = ['Tools', 'Fertilizers', 'Pots', 'Plant Care', 'Watering Cans', 'Soil & Compost', 'Garden Accessories', 'Indoor Growing', 'Outdoor Growing', 'Seeds', 'Planters', 'Garden Tools', 'Plant Food', 'Pest Control'].map(cat => ({ _id: cat }));
+      setCategories(staticCategories);
     }
   };
 
@@ -160,17 +163,6 @@ const AdminProducts = () => {
       }
     } catch (error) {
       console.error('Error loading inventory stats:', error);
-    }
-  };
-
-  const loadNotifications = async () => {
-    try {
-      const response = await apiCall('/admin/notifications');
-      if (response.success) {
-        setNotifications(response.data);
-      }
-    } catch (error) {
-      console.error('Error loading notifications:', error);
     }
   };
 
@@ -461,22 +453,90 @@ const AdminProducts = () => {
   };
 
   const handleCSVUpload = async (file) => {
+    // Validate file
+    if (!file) {
+      setMessage('Please select a file to upload');
+      return;
+    }
+
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage('File size must be less than 10MB');
+      return;
+    }
+
+    // Check file type
+    const allowedTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+    const allowedExtensions = ['.csv', '.xlsx', '.xls'];
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    
+    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+      setMessage('Please upload a CSV or Excel file (.csv, .xlsx)');
+      return;
+    }
+
+    console.log('CSV Upload started:', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      fileExtension
+    });
+    
     try {
+      setLoading(true);
+      setMessage('Uploading file...');
+
       const formData = new FormData();
       formData.append('file', file);
+      
+      console.log('FormData created, sending request...');
+      console.log('FormData contents:', {
+        hasFile: formData.has('file'),
+        file: formData.get('file'),
+        fileType: formData.get('file')?.type,
+        fileSize: formData.get('file')?.size
+      });
       
       const response = await apiCall('/admin/products/upload-csv', {
         method: 'POST',
         body: formData
+        // Don't set Content-Type header, let the browser set it with boundary
       });
 
+      console.log('CSV Upload response:', response);
+
       if (response.success) {
-        setMessage(`CSV uploaded successfully. ${response.data.processed} products processed.`);
-        loadProducts();
+        const { processed, errors, errorDetails } = response.data;
+        
+        let message;
+        if (errors > 0) {
+          message = `Upload completed: ${processed} products created successfully, ${errors} errors encountered.`;
+          console.warn('CSV Upload Errors:', errorDetails);
+        } else {
+          message = `✅ Upload successful! ${processed} products created successfully.`;
+        }
+        
+        setMessage(message);
+        
+        // Refresh products list to show newly created products
+        await loadProducts();
+        
+        // Show detailed error information in console for debugging
+        if (errorDetails && errorDetails.length > 0) {
+          console.group('📋 Upload Error Details:');
+          errorDetails.forEach((error, index) => {
+            console.error(`${index + 1}. ${error}`);
+          });
+          console.groupEnd();
+        }
+      } else {
+        setMessage('❌ Upload failed: ' + (response.message || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error uploading CSV:', error);
-      setMessage('Error uploading CSV: ' + error.message);
+      setMessage('❌ Upload failed: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -691,18 +751,6 @@ const AdminProducts = () => {
               <p className="text-gray-600 text-sm">Manage products, inventory, pricing, and analytics</p>
             </div>
             <div className="flex items-center space-x-3">
-              {/* Notification Badge */}
-              {notifications.length > 0 && (
-                <div className="relative">
-                  <button className="p-2 text-gray-600 hover:text-gray-900 relative">
-                    <Bell className="h-5 w-5" />
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                      {notifications.length}
-                    </span>
-                  </button>
-                </div>
-              )}
-              
               {/* Bulk Actions */}
               {selectedProducts.length > 0 && (
                 <div className="flex items-center space-x-2 mr-4 p-2 bg-blue-50 rounded-lg">
@@ -773,37 +821,8 @@ const AdminProducts = () => {
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="px-4 sm:px-6 lg:px-8 py-4">
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            {[
-              { id: 'products', name: 'Products', icon: Package },
-              { id: 'inventory', name: 'Inventory Dashboard', icon: TrendingUp },
-              { id: 'reviews', name: 'Reviews & Ratings', icon: MessageSquare },
-              { id: 'analytics', name: 'Analytics', icon: PieChart }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <tab.icon className="h-4 w-4 mr-2" />
-                {tab.name}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </div>
 
       <div className="px-4 sm:px-6 lg:px-8 py-4">
-        {/* Tab Content */}
-        {activeTab === 'products' && (
-          <>
         {/* Search and Filters */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
@@ -916,310 +935,88 @@ const AdminProducts = () => {
           </div>
         </div>
 
-              {/* CSV Upload */}
+              {/* CSV/Excel Upload */}
               <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center">
-                    <input
-                      type="file"
-                      accept=".csv,.xlsx"
-                      onChange={(e) => {
-                        const file = e.target.files[0];
-                        if (file) handleCSVUpload(file);
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center">
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          console.log('File input changed:', file);
+                          if (file) {
+                            handleCSVUpload(file);
+                          } else {
+                            console.log('No file selected');
+                          }
+                          // Reset input value to allow re-uploading same file
+                          e.target.value = '';
+                        }}
+                        className="hidden"
+                        id="csv-upload"
+                        disabled={loading}
+                      />
+                      <label
+                        htmlFor="csv-upload"
+                        className={`flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                          loading 
+                            ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
+                            : 'bg-gray-600 text-white hover:bg-gray-700'
+                        }`}
+                      >
+                        <FileSpreadsheet className="h-4 w-4 mr-2" />
+                        {loading ? 'Uploading...' : 'Upload CSV/Excel'}
+                      </label>
+                    </div>
+                    <button
+                      onClick={() => {
+                        // Download CSV template
+                        const csvContent = 'name,category,description,sku,regularPrice,discountPrice,stock,lowStockThreshold,featured,published,tags,weight,length,width,height\n';
+                        const blob = new Blob([csvContent], { type: 'text/csv' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'products_template.csv';
+                        a.click();
+                        window.URL.revokeObjectURL(url);
                       }}
-                      className="hidden"
-                      id="csv-upload"
-                    />
-                    <label
-                      htmlFor="csv-upload"
-                      className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors cursor-pointer"
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      disabled={loading}
                     >
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Upload CSV/Excel
-                    </label>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download Template
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      // Download CSV template
-                      const csvContent = 'name,category,description,sku,regularPrice,discountPrice,stock,lowStockThreshold,featured,published\n';
-                      const blob = new Blob([csvContent], { type: 'text/csv' });
-                      const url = window.URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = 'products_template.csv';
-                      a.click();
-                      window.URL.revokeObjectURL(url);
-                    }}
-                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Template
-                  </button>
+                  
+                  {/* Upload Instructions */}
+                  <div className="text-sm text-gray-600 max-w-md">
+                    <p className="font-medium mb-1">📋 Upload Instructions:</p>
+                    <ul className="text-xs space-y-1">
+                      <li>• Supported formats: CSV, Excel (.xlsx, .xls)</li>
+                      <li>• Max file size: 10MB</li>
+                      <li>• Required fields: name, category, description, sku, regularPrice, stock</li>
+                      <li>• Download template for correct format</li>
+                    </ul>
+                  </div>
                 </div>
+                
+                {/* Upload Status Message */}
+                {message && (
+                  <div className={`mt-3 p-3 rounded-lg text-sm ${
+                    message.includes('✅') 
+                      ? 'bg-green-50 text-green-800 border border-green-200' 
+                      : message.includes('❌') 
+                      ? 'bg-red-50 text-red-800 border border-red-200'
+                      : 'bg-blue-50 text-blue-800 border border-blue-200'
+                  }`}>
+                    {message}
+                  </div>
+                )}
               </div>
             </div>
 
-        {/* Inventory Dashboard */}
-        {activeTab === 'inventory' && (
-          <div className="space-y-6">
-            {/* Inventory Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                      <Package className="h-5 w-5 text-green-600" />
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Total Products</p>
-                    <p className="text-2xl font-semibold text-gray-900">{inventoryStats?.totalProducts || 0}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                      <AlertTriangle className="h-5 w-5 text-orange-600" />
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Low Stock</p>
-                    <p className="text-2xl font-semibold text-orange-600">{inventoryStats?.lowStockCount || 0}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-                      <XCircle className="h-5 w-5 text-red-600" />
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Out of Stock</p>
-                    <p className="text-2xl font-semibold text-red-600">{inventoryStats?.outOfStockCount || 0}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <DollarSign className="h-5 w-5 text-blue-600" />
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Total Value</p>
-                    <p className="text-2xl font-semibold text-gray-900">₹{inventoryStats?.totalValue?.toLocaleString() || 0}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {/* Low Stock Alerts */}
-            {inventoryStats?.lowStockProducts && inventoryStats.lowStockProducts.length > 0 && (
-              <div className="bg-white rounded-lg shadow-sm border">
-                <div className="px-6 py-4 border-b border-gray-200">
-                  <h3 className="text-lg font-medium text-gray-900 flex items-center">
-                    <AlertTriangle className="h-5 w-5 text-orange-500 mr-2" />
-                    Low Stock Alerts
-                  </h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Stock</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Threshold</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {inventoryStats.lowStockProducts.map((product) => (
-                        <tr key={product._id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div className="flex-shrink-0 h-10 w-10">
-                                {product.images && product.images.length > 0 ? (
-                                  <img className="h-10 w-10 rounded-lg object-cover" src={product.images[0]} alt={product.name} />
-                                ) : (
-                                  <div className="h-10 w-10 rounded-lg bg-gray-300 flex items-center justify-center">
-                                    <Package className="h-5 w-5 text-gray-600" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="ml-4">
-                                <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                                <div className="text-sm text-gray-500">{product.sku}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <span className={`font-medium ${product.stock === 0 ? 'text-red-600' : 'text-orange-600'}`}>
-                              {product.stock}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {product.lowStockThreshold}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              product.stock === 0 
-                                ? 'bg-red-100 text-red-800' 
-                                : 'bg-orange-100 text-orange-800'
-                            }`}>
-                              {product.stock === 0 ? 'Out of Stock' : 'Low Stock'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <button
-                              onClick={() => openEditModal(product)}
-                              className="text-blue-600 hover:text-blue-500"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Reviews & Ratings Tab */}
-        {activeTab === 'reviews' && (
-          <div className="bg-white rounded-lg shadow-sm border">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Product Reviews & Ratings</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rating</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Review</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {reviews.map((review) => (
-                    <tr key={review._id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{review.productName}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{review.customerName}</div>
-                        <div className="text-sm text-gray-500">{review.customerEmail}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          {[...Array(5)].map((_, i) => (
-                            <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} />
-                          ))}
-                          <span className="ml-2 text-sm text-gray-600">{review.rating}/5</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900 max-w-xs truncate">{review.comment}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          review.status === 'approved' 
-                            ? 'bg-green-100 text-green-800' 
-                            : review.status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {review.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center space-x-2">
-                          {review.status === 'pending' && (
-                            <>
-                              <button
-                                onClick={() => handleReviewAction(review._id, 'approve')}
-                                className="text-green-600 hover:text-green-500"
-                                title="Approve review"
-                              >
-                                <ThumbsUp className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => handleReviewAction(review._id, 'reject')}
-                                className="text-red-600 hover:text-red-500"
-                                title="Reject review"
-                              >
-                                <ThumbsDown className="h-4 w-4" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-        
-        {/* Analytics Tab */}
-        {activeTab === 'analytics' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Top Selling Products</h3>
-                <div className="space-y-3">
-                  {inventoryStats?.topSellingProducts?.slice(0, 5).map((product, index) => (
-                    <div key={product._id} className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <span className="text-sm font-medium text-gray-500 w-6">{index + 1}</span>
-                        <div className="ml-3">
-                          <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                          <div className="text-sm text-gray-500">{product.salesCount} sold</div>
-                        </div>
-                      </div>
-                      <div className="text-sm font-medium text-gray-900">₹{product.totalSales?.toLocaleString()}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Slow Moving Products</h3>
-                <div className="space-y-3">
-                  {inventoryStats?.slowMovingProducts?.slice(0, 5).map((product, index) => (
-                    <div key={product._id} className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <span className="text-sm font-medium text-gray-500 w-6">{index + 1}</span>
-                        <div className="ml-3">
-                          <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                          <div className="text-sm text-gray-500">{product.salesCount} sold</div>
-                        </div>
-                      </div>
-                      <div className="text-sm font-medium text-gray-900">₹{product.totalSales?.toLocaleString()}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        </>
-        )}
 
         {/* Products Table */}
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">

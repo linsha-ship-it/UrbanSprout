@@ -544,41 +544,29 @@ const approveBlogPost = asyncHandler(async (req, res, next) => {
 
   await post.save();
 
-  // Send real-time notification to the author
-  await notificationService.sendNotification(post.authorId, {
-    userEmail: post.authorEmail,
-    type: 'blog_approved',
-    title: 'Blog Post Approved! 🎉',
-    message: `Your blog post "${post.title}" has been approved and is now live on the blog!`,
-    relatedId: post._id
-  });
+  // Send notification to the author
+  try {
+    await notificationService.sendNotification(post.authorId, {
+      userEmail: post.authorEmail,
+      type: 'blog_approved',
+      title: '✅ Blog Post Approved!',
+      message: `Your blog post "${post.title}" has been approved and is now live on the feed!`,
+      relatedId: post._id,
+      relatedModel: 'Blog'
+    });
+    console.log(`✅ Blog approval notification sent to ${post.authorEmail}`);
+  } catch (notificationError) {
+    console.error('❌ Failed to send blog approval notification:', notificationError);
+    // Don't fail the approval if notification fails
+  }
 
   // Send approval email to the author
   try {
     await sendBlogApprovalEmail(post.authorEmail, post.author, post.title);
-    console.log(`Blog approval email sent to ${post.authorEmail}`);
+    console.log(`📧 Blog approval email sent to ${post.authorEmail}`);
   } catch (emailError) {
-    console.error('Failed to send blog approval email:', emailError);
+    console.error('❌ Failed to send blog approval email:', emailError);
     // Don't fail approval if email fails
-  }
-
-  // Send notification to the author
-  try {
-    const author = await User.findOne({ email: post.authorEmail });
-    if (author) {
-      await notificationService.sendNotification(author._id, {
-        userEmail: post.authorEmail,
-        type: 'blog_approved',
-        title: 'Blog Post Approved! ✅',
-        message: `Congratulations! Your blog post "${post.title}" has been approved and is now live on UrbanSprout.`,
-        relatedId: post._id,
-        relatedModel: 'Blog'
-      });
-      console.log(`Blog approval notification sent to user ${post.authorEmail}`);
-    }
-  } catch (notificationError) {
-    console.error('Error sending blog approval notification:', notificationError);
-    // Don't fail approval if notification fails
   }
 
   res.json({
@@ -1738,12 +1726,201 @@ const bulkEditProducts = asyncHandler(async (req, res, next) => {
 // @route   POST /api/admin/products/upload-csv
 // @access  Private (Admin only)
 const uploadCSV = asyncHandler(async (req, res, next) => {
-  // Mock implementation
-  res.json({
-    success: true,
-    message: 'CSV uploaded successfully',
-    data: { processed: 10 }
+  console.log('CSV Upload Request:', {
+    method: req.method,
+    url: req.url,
+    contentType: req.headers['content-type'],
+    hasFile: !!req.file,
+    fileInfo: req.file ? {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path
+    } : null
   });
+  
+  if (!req.file) {
+    console.log('No file uploaded');
+    return next(new AppError('No file uploaded', 400));
+  }
+
+  console.log('File received:', req.file.path);
+
+  const fs = require('fs');
+  const path = require('path');
+  const results = [];
+  let processedCount = 0;
+  let errorCount = 0;
+  const errors = [];
+
+  try {
+    console.log('Starting file parsing...');
+    
+    // Check file extension to determine parsing method
+    const fileExtension = req.file.originalname.toLowerCase().substring(req.file.originalname.lastIndexOf('.'));
+    
+    if (fileExtension === '.csv') {
+      // Parse CSV file
+      const csv = require('csv-parser');
+      await new Promise((resolve, reject) => {
+        fs.createReadStream(req.file.path)
+          .pipe(csv())
+          .on('data', (data) => {
+            console.log('CSV row:', data);
+            results.push(data);
+          })
+          .on('end', () => {
+            console.log('CSV parsing completed, rows:', results.length);
+            resolve();
+          })
+          .on('error', reject);
+      });
+    } else if (fileExtension === '.xlsx' || fileExtension === '.xls') {
+      // Parse Excel file
+      const XLSX = require('xlsx');
+      const workbook = XLSX.readFile(req.file.path);
+      const sheetName = workbook.SheetNames[0]; // Use first sheet
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      
+      console.log('Excel parsing completed, rows:', jsonData.length);
+      results.push(...jsonData);
+    } else {
+      throw new Error('Unsupported file format');
+    }
+
+    // Validate that we have data to process
+    if (results.length === 0) {
+      throw new Error('No data found in file');
+    }
+
+    // Process each row
+    for (const row of results) {
+      try {
+        // Skip empty rows
+        if (!row || Object.keys(row).length === 0) {
+          continue;
+        }
+
+        // Validate required fields
+        const requiredFields = ['name', 'category', 'description', 'sku', 'regularPrice', 'stock'];
+        const missingFields = requiredFields.filter(field => !row[field] || row[field].toString().trim() === '');
+        
+        if (missingFields.length > 0) {
+          errors.push(`Row ${processedCount + errorCount + 1}: Missing required fields: ${missingFields.join(', ')}`);
+          errorCount++;
+          continue;
+        }
+
+        // Validate data types and ranges
+        const regularPrice = parseFloat(row.regularPrice);
+        const stock = parseInt(row.stock);
+        
+        if (isNaN(regularPrice) || regularPrice <= 0) {
+          errors.push(`Row ${processedCount + errorCount + 1}: Invalid regularPrice (must be a positive number)`);
+          errorCount++;
+          continue;
+        }
+
+        if (isNaN(stock) || stock < 0) {
+          errors.push(`Row ${processedCount + errorCount + 1}: Invalid stock (must be a non-negative number)`);
+          errorCount++;
+          continue;
+        }
+
+        // Validate SKU format (alphanumeric, 3-20 characters)
+        const sku = row.sku.trim().toUpperCase();
+        if (!/^[A-Z0-9]{3,20}$/.test(sku)) {
+          errors.push(`Row ${processedCount + errorCount + 1}: Invalid SKU format (must be 3-20 alphanumeric characters)`);
+          errorCount++;
+          continue;
+        }
+
+        // Check if SKU already exists
+        const existingProduct = await Product.findOne({ sku: sku });
+        if (existingProduct) {
+          errors.push(`Row ${processedCount + errorCount + 1}: SKU ${sku} already exists`);
+          errorCount++;
+          continue;
+        }
+
+        // Validate discount price if provided
+        if (row.discountPrice) {
+          const discountPrice = parseFloat(row.discountPrice);
+          if (isNaN(discountPrice) || discountPrice < 0 || discountPrice >= regularPrice) {
+            errors.push(`Row ${processedCount + errorCount + 1}: Invalid discountPrice (must be a positive number less than regularPrice)`);
+            errorCount++;
+            continue;
+          }
+        }
+
+        // Prepare product data using validated values
+        const productData = {
+          name: row.name.trim(),
+          category: row.category.trim(),
+          description: row.description.trim(),
+          sku: sku,
+          regularPrice: regularPrice,
+          stock: stock,
+          lowStockThreshold: parseInt(row.lowStockThreshold) || 10,
+          featured: row.featured === 'true' || row.featured === '1' || row.featured === true,
+          published: row.published !== 'false' && row.published !== '0' && row.published !== false,
+          tags: row.tags ? row.tags.split(',').map(tag => tag.trim().toLowerCase()) : [],
+          weight: row.weight ? parseFloat(row.weight) : null,
+          dimensions: {
+            length: row.length ? parseFloat(row.length) : null,
+            width: row.width ? parseFloat(row.width) : null,
+            height: row.height ? parseFloat(row.height) : null
+          },
+          images: ['https://via.placeholder.com/400x400?text=No+Image'] // Default placeholder image
+        };
+
+        // Add discount price if provided and valid
+        if (row.discountPrice) {
+          const discountPrice = parseFloat(row.discountPrice);
+          if (!isNaN(discountPrice) && discountPrice > 0 && discountPrice < regularPrice) {
+            productData.discountPrice = discountPrice;
+          }
+        }
+
+        // Create product
+        console.log('Creating product:', productData);
+        await Product.create(productData);
+        processedCount++;
+        console.log('Product created successfully, total processed:', processedCount);
+
+      } catch (error) {
+        errors.push(`Row ${processedCount + errorCount + 1}: ${error.message}`);
+        errorCount++;
+      }
+    }
+
+    // Clean up uploaded file
+    fs.unlinkSync(req.file.path);
+
+    console.log('File processing completed:', {
+      processed: processedCount,
+      errors: errorCount,
+      errorDetails: errors
+    });
+
+    res.json({
+      success: true,
+      message: `File processed successfully. ${processedCount} products created, ${errorCount} errors`,
+      data: { 
+        processed: processedCount,
+        errors: errorCount,
+        errorDetails: errors
+      }
+    });
+
+  } catch (error) {
+    // Clean up uploaded file in case of error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    return next(new AppError(`Error processing file: ${error.message}`, 500));
+  }
 });
 
 // @desc    Create discount

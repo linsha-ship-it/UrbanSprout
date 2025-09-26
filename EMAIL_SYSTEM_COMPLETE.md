@@ -59,3 +59,4 @@ node test-blog-rejection-email.js
 4. **Verify blog rejection emails work for real users**
 
 The email system is now properly configured and will work once you set up the Gmail App Password!
+

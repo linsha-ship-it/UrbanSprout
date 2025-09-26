@@ -6,6 +6,7 @@ const User = require('../models/User');
 const { AppError } = require('../middlewares/errorHandler');
 const { asyncHandler } = require('../middlewares/errorHandler');
 const { sendOrderConfirmationEmail, sendPaymentConfirmationEmail, sendOrderStatusUpdateEmail } = require('../utils/emailService');
+const notificationService = require('../utils/notificationService');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 
@@ -374,6 +375,22 @@ const createOrder = asyncHandler(async (req, res, next) => {
     // Don't fail the order creation if email fails
   }
 
+  // Send order placement notification
+  try {
+    await notificationService.sendNotification(req.user._id, {
+      userEmail: req.user.email,
+      type: 'order_placed',
+      title: '🛒 Order Placed Successfully!',
+      message: `Your order #${order.orderNumber} has been placed successfully!`,
+      relatedId: order._id,
+      relatedModel: 'Order'
+    });
+    console.log(`✅ Order placement notification sent to ${req.user.email}`);
+  } catch (notificationError) {
+    console.error('❌ Failed to send order placement notification:', notificationError);
+    // Don't fail the order creation if notification fails
+  }
+
   res.status(201).json({
     success: true,
     message: 'Order created successfully',
@@ -611,6 +628,22 @@ const verifyPayment = asyncHandler(async (req, res, next) => {
     } catch (emailError) {
       console.error('Failed to send order confirmation email:', emailError);
       // Don't fail payment if email fails
+    }
+
+    // Send order placement notification
+    try {
+      await notificationService.sendNotification(req.user._id, {
+        userEmail: req.user.email,
+        type: 'order_placed',
+        title: '🛒 Order Placed Successfully!',
+        message: `Your order #${order.orderNumber} has been placed successfully!`,
+        relatedId: order._id,
+        relatedModel: 'Order'
+      });
+      console.log(`✅ Order placement notification sent to ${req.user.email}`);
+    } catch (notificationError) {
+      console.error('❌ Failed to send order placement notification:', notificationError);
+      // Don't fail the payment if notification fails
     }
 
     // Send payment confirmation email (only to non-admin users)

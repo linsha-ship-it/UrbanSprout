@@ -85,26 +85,49 @@ const Profile = () => {
         return
       }
 
-      // Update profile using AuthContext
-      const updatedData = {
-        name: profileData.name.trim(),
-        displayName: profileData.name.trim(),
-        profilePhoto: profileData.profilePhoto
+      // Update profile on backend first
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('urbansprout_token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: profileData.name.trim(),
+          avatar: profileData.profilePhoto
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update profile on server')
       }
+
+      const result = await response.json()
       
-      // Update user in AuthContext (this will automatically update localStorage)
-      updateProfile(updatedData)
-      
-      setMessage('Profile updated successfully!')
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => {
-        setMessage('')
-      }, 3000)
+      if (result.success) {
+        // Update profile using AuthContext with the server response
+        const updatedData = {
+          name: result.data.user.name,
+          displayName: result.data.user.name,
+          profilePhoto: result.data.user.avatar || profileData.profilePhoto
+        }
+        
+        // Update user in AuthContext (this will automatically update localStorage)
+        updateProfile(updatedData)
+        
+        setMessage('Profile updated successfully!')
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setMessage('')
+        }, 3000)
+      } else {
+        throw new Error(result.message || 'Failed to update profile')
+      }
       
     } catch (error) {
       console.error('Profile update error:', error)
-      setMessage('Failed to update profile. Please try again.')
+      setMessage(`Failed to update profile: ${error.message}`)
     } finally {
       setLoading(false)
     }

@@ -102,3 +102,4 @@ If emails still don't work:
 4. Verify blog rejection emails work for real users
 
 The email system is now properly configured with enhanced error handling and logging!
+

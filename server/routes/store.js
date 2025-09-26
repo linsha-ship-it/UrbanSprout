@@ -36,7 +36,9 @@ router.get('/', async (req, res) => {
     };
     
     if (category && category !== 'all') {
-      filter.category = category;
+      // Handle URL decoding for emoji characters
+      const decodedCategory = decodeURIComponent(category);
+      filter.category = decodedCategory;
     }
     
     if (minPrice || maxPrice) {
@@ -121,6 +123,34 @@ router.get('/', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching products',
+      error: error.message
+    });
+  }
+});
+
+// GET /store/categories - Get all categories
+router.get('/categories', async (req, res) => {
+  try {
+    const categories = await Product.aggregate([
+      {
+        $match: {
+          published: true,
+          archived: false,
+          name: { $not: /^Placeholder for/ }
+        }
+      },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+
+    res.json({
+      success: true,
+      data: { categories }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching categories',
       error: error.message
     });
   }

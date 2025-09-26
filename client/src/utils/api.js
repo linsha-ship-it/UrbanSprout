@@ -6,11 +6,16 @@ export const apiCall = async (endpoint, options = {}) => {
   
   const config = {
     headers: {
-      'Content-Type': 'application/json',
       ...options.headers,
     },
     ...options,
   };
+
+  // Only set Content-Type to application/json if body is not FormData
+  // FormData needs to set its own Content-Type with boundary
+  if (!(options.body instanceof FormData)) {
+    config.headers['Content-Type'] = 'application/json';
+  }
 
   // Add auth token if available
   const token = localStorage.getItem('urbansprout_token');

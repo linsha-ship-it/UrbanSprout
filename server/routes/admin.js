@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const {
   getDashboardStats,
   getAllUsers,
@@ -56,6 +57,46 @@ const {
 
 const router = express.Router();
 
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    console.log('Multer destination:', file.originalname);
+    cb(null, 'uploads/')
+  },
+  filename: function (req, file, cb) {
+    const filename = Date.now() + '-' + file.originalname;
+    console.log('Multer filename:', filename);
+    cb(null, filename)
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: function (req, file, cb) {
+    console.log('Multer file filter:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      fieldname: file.fieldname
+    });
+    
+    // Allow CSV and Excel files
+    const allowedMimeTypes = [
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
+    const allowedExtensions = ['.csv', '.xlsx', '.xls'];
+    const fileExtension = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
+    
+    if (allowedMimeTypes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
+      cb(null, true);
+    } else {
+      console.log('File rejected:', file.originalname, file.mimetype);
+      cb(new Error('Only CSV and Excel files are allowed'), false);
+    }
+  }
+});
+
 // All admin routes require authentication and admin role
 router.use(protect, admin);
 
@@ -104,7 +145,7 @@ router.get('/products/inventory-stats', getInventoryStats);
 router.get('/products/reviews', getProductReviews);
 router.put('/products/reviews/:id/:action', handleReviewAction);
 router.put('/products/bulk-edit', bulkEditProducts);
-router.post('/products/upload-csv', uploadCSV);
+router.post('/products/upload-csv', upload.single('file'), uploadCSV);
 router.post('/products/discounts', createDiscount);
 router.get('/products/:id', validateObjectId, getProduct);
 router.post('/products', createProduct);

@@ -144,7 +144,7 @@ const PlantDetail = () => {
       'Cherry Tomato': 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&h=300&fit=crop',
       'Fresh Mint': 'https://images.unsplash.com/photo-1594736797933-d0401ba2fe65?w=400&h=300&fit=crop',
       'Lettuce': 'https://images.unsplash.com/photo-1622206151226-18ca2c9ab4a1?w=400&h=300&fit=crop',
-      'Bell Pepper': 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=300&fit=crop',
+      'Bell Pepper': 'https://images.unsplash.com/photo-1544816155-12df9643f363?w=400&h=300&fit=crop',
       'Strawberry': 'https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400&h=300&fit=crop'
     };
 

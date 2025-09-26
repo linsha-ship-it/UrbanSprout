@@ -146,22 +146,22 @@ blogSchema.pre('save', function(next) {
 
 // Virtual for like count
 blogSchema.virtual('likeCount').get(function() {
-  return this.likes.length
+  return this.likes ? this.likes.length : 0
 })
 
 // Virtual for comment count
 blogSchema.virtual('commentCount').get(function() {
-  return this.comments.length
+  return this.comments ? this.comments.length : 0
 })
 
 // Virtual for bookmark count
 blogSchema.virtual('bookmarkCount').get(function() {
-  return this.bookmarks.length
+  return this.bookmarks ? this.bookmarks.length : 0
 })
 
 // Virtual for share count
 blogSchema.virtual('shareCount').get(function() {
-  return this.shares.length
+  return this.shares ? this.shares.length : 0
 })
 
 // Ensure virtual fields are serialized

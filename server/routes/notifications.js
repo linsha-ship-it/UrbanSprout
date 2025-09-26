@@ -26,8 +26,7 @@ const getUserNotifications = asyncHandler(async (req, res) => {
   const notifications = await Notification.find(filter)
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(limitNum)
-    .populate('relatedId', 'title');
+    .limit(limitNum);
   
   const totalNotifications = await Notification.countDocuments(filter);
   const unreadCount = await Notification.countDocuments({ 

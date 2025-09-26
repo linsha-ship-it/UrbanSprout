@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Blog = require('../models/Blog');
 const { generateToken } = require('../middlewares/auth');
 const { AppError } = require('../middlewares/errorHandler');
 const { asyncHandler } = require('../middlewares/errorHandler');
@@ -146,12 +147,29 @@ const updateProfile = asyncHandler(async (req, res, next) => {
     return next(new AppError('User not found', 404));
   }
 
+  // Store old name for blog post updates
+  const oldName = user.name;
+
   // Update fields if provided
   if (name) user.name = name.trim();
   if (preferences) user.preferences = { ...user.preferences, ...preferences };
   if (avatar) user.avatar = avatar;
 
   await user.save();
+
+  // If name was updated, update author names in all blog posts
+  if (name && name.trim() !== oldName) {
+    try {
+      await Blog.updateMany(
+        { authorEmail: user.email },
+        { author: name.trim() }
+      );
+      console.log(`✅ Updated author name in blog posts for user ${user.email}: "${oldName}" → "${name.trim()}"`);
+    } catch (error) {
+      console.error('❌ Error updating blog post author names:', error);
+      // Don't fail the profile update if blog post update fails
+    }
+  }
 
   res.json({
     success: true,

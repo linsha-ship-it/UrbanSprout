@@ -16,9 +16,23 @@ const NotificationIcon = () => {
   const lastFetchTime = useRef(0);
   const CACHE_DURATION = 30000; // 30 seconds
 
+  // Clear cache when user changes
+  useEffect(() => {
+    console.log('🔔 User changed, clearing notification cache');
+    notificationCache.current.clear();
+    lastFetchTime.current = 0;
+    setNotifications([]);
+    setUnreadCount(0);
+  }, [user?._id]);
+
   // Initialize WebSocket connection
   useEffect(() => {
-    if (!user || !token) return;
+    if (!user || !token) {
+      console.log('🔔 No user or token for WebSocket connection');
+      return;
+    }
+
+    console.log('🔔 Initializing WebSocket connection for user:', user.email);
 
     const newSocket = io(import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001', {
       auth: {
@@ -98,48 +112,121 @@ const NotificationIcon = () => {
 
   // Fetch notifications with caching
   const fetchNotifications = useCallback(async (forceRefresh = false) => {
+    console.log('🔔 fetchNotifications called', { 
+      forceRefresh, 
+      userId: user?._id, 
+      userEmail: user?.email,
+      tokenExists: !!token 
+    });
+
+    if (!user?._id) {
+      console.log('🔔 No user ID available for fetching notifications');
+      return;
+    }
+
     const now = Date.now();
+    const cacheKey = `notifications_${user._id}`;
     
     // Use cache if not forcing refresh and cache is still valid
     if (!forceRefresh && 
-        notificationCache.current.has('notifications') && 
+        notificationCache.current.has(cacheKey) && 
         (now - lastFetchTime.current) < CACHE_DURATION) {
-      const cached = notificationCache.current.get('notifications');
+      const cached = notificationCache.current.get(cacheKey);
       setNotifications(cached.notifications);
       setUnreadCount(cached.unreadCount);
+      console.log('🔔 Using cached notifications for user:', user.email);
       return;
     }
 
     try {
       setLoading(true);
+      console.log('🔔 Starting API call for notifications...');
+      console.log('🔔 User:', user?.email, 'ID:', user?._id);
+      console.log('🔔 Token available:', !!token);
+      console.log('🔔 API URL:', '/notifications?limit=20');
+      
       const response = await apiCall('/notifications?limit=20');
-      if (response.success) {
+      console.log('🔔 Raw API response:', response);
+      
+      if (response && response.success) {
         const data = response.data;
-        setNotifications(data.notifications);
-        setUnreadCount(data.unreadCount);
+        console.log('🔔 Parsed data:', data);
+        console.log('🔔 Notifications array length:', data?.notifications?.length || 0);
+        console.log('🔔 Unread count:', data?.unreadCount || 0);
         
-        // Cache the result
-        notificationCache.current.set('notifications', data);
+        if (data?.notifications && Array.isArray(data.notifications)) {
+          console.log('🔔 Setting notifications:', data.notifications.map(n => ({
+            id: n._id,
+            title: n.title,
+            message: n.message,
+            type: n.type
+          })));
+          setNotifications(data.notifications);
+        } else {
+          console.log('🔔 No notifications array found, setting empty array');
+          setNotifications([]);
+        }
+        
+        setUnreadCount(data?.unreadCount || 0);
+        console.log(`🔔 Final state: ${data?.notifications?.length || 0} notifications, ${data?.unreadCount || 0} unread`);
+        
+        // Cache the result with user-specific key
+        notificationCache.current.set(cacheKey, data);
         lastFetchTime.current = now;
+      } else {
+        console.error('❌ API returned error or invalid response:', response);
+        setNotifications([]);
+        setUnreadCount(0);
       }
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      console.error('❌ Error fetching notifications:', error);
+      console.error('❌ Error stack:', error.stack);
+      setNotifications([]);
+      setUnreadCount(0);
     } finally {
       setLoading(false);
+      console.log('🔔 fetchNotifications completed');
     }
-  }, []);
+  }, [user, token]);
 
   // Fetch unread count only (lightweight)
-  const fetchUnreadCount = useCallback(async () => {
+  const fetchUnreadCount = useCallback(async (retryCount = 0) => {
+    console.log('🔔 fetchUnreadCount called', { 
+      retryCount, 
+      userId: user?._id, 
+      userEmail: user?.email,
+      tokenExists: !!token 
+    });
+
+    if (!user?._id) {
+      console.log('🔔 No user ID available for fetching unread count');
+      return;
+    }
+
     try {
+      console.log(`🔔 Fetching unread count for user: ${user?.email} (attempt ${retryCount + 1})`);
       const response = await apiCall('/notifications/unread-count');
-      if (response.success) {
-        setUnreadCount(response.data.unreadCount);
+      console.log('🔔 Unread count API response:', response);
+      
+      if (response && response.success) {
+        const unreadCount = response.data?.unreadCount || 0;
+        console.log(`🔔 Setting unread count: ${unreadCount}`);
+        setUnreadCount(unreadCount);
+      } else {
+        console.error('❌ Unread count API returned error:', response);
+        if (retryCount < 2) {
+          console.log('🔄 Retrying unread count in 2 seconds...');
+          setTimeout(() => fetchUnreadCount(retryCount + 1), 2000);
+        }
       }
     } catch (error) {
-      console.error('Error fetching unread count:', error);
+      console.error('❌ Error fetching unread count:', error);
+      if (retryCount < 2) {
+        console.log('🔄 Retrying unread count in 2 seconds...');
+        setTimeout(() => fetchUnreadCount(retryCount + 1), 2000);
+      }
     }
-  }, []);
+  }, [user]);
 
   // Mark notification as read
   const markAsRead = useCallback(async (notificationId) => {
@@ -227,12 +314,28 @@ const NotificationIcon = () => {
     }
   }, [isOpen, fetchNotifications]);
 
-  // Initial load
+  // Initial load and periodic refresh
   useEffect(() => {
-    if (user) {
+    if (user && token) {
+      console.log('🔔 User and token found, fetching notifications and unread count...', user.email);
+      console.log('🔔 Token available:', !!token);
+      console.log('🔔 User ID:', user._id);
+      
+      // Fetch both notifications and unread count
+      fetchNotifications();
       fetchUnreadCount();
+      
+      // Set up periodic refresh every 30 seconds
+      const interval = setInterval(() => {
+        console.log('🔔 Periodic refresh of unread count');
+        fetchUnreadCount();
+      }, 30000);
+      
+      return () => clearInterval(interval);
+    } else {
+      console.log('🔔 No user or token found, skipping notification fetch', { user: !!user, token: !!token });
     }
-  }, [user, fetchUnreadCount]);
+  }, [user, token, fetchNotifications, fetchUnreadCount]);
 
   const formatTime = (dateString) => {
     const date = new Date(dateString);
@@ -251,16 +354,41 @@ const NotificationIcon = () => {
         return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'blog_rejected':
         return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'blog_deleted':
+        return <X className="h-4 w-4 text-red-500" />;
       case 'comment_approved':
         return <MessageSquare className="h-4 w-4 text-blue-500" />;
       case 'comment_rejected':
         return <X className="h-4 w-4 text-red-500" />;
+      case 'order_placed':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'order_status_update':
+        return <Info className="h-4 w-4 text-blue-500" />;
+      case 'order_shipped':
+        return <CheckCircle className="h-4 w-4 text-blue-500" />;
+      case 'order_delivered':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'order_cancelled':
+        return <X className="h-4 w-4 text-red-500" />;
+      case 'blog_like':
+        return <span className="text-red-500 text-lg">❤️</span>;
+      case 'blog_comment':
+        return <span className="text-blue-500 text-lg">💬</span>;
       default:
         return <Info className="h-4 w-4 text-gray-500" />;
     }
   };
 
   if (!user) return null;
+
+  // Debug info (can be removed in production)
+  console.log('🔔 NotificationIcon render:', {
+    user: user?.email,
+    unreadCount,
+    notificationsCount: notifications.length,
+    isConnected,
+    loading
+  });
 
   return (
     <div className="relative">
@@ -313,7 +441,11 @@ const NotificationIcon = () => {
               </div>
             ) : notifications.length === 0 ? (
               <div className="p-4 text-center text-gray-500">
-                No notifications yet
+                <div className="text-gray-400 mb-2">🔔</div>
+                <div>No notifications yet</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  You'll see notifications here when you receive likes, comments, or order updates
+                </div>
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
@@ -366,16 +498,26 @@ const NotificationIcon = () => {
             )}
           </div>
 
-          {notifications.length > 0 && (
-            <div className="p-4 border-t border-gray-200">
-              <button
-                onClick={() => fetchNotifications(true)}
-                className="w-full text-sm text-blue-600 hover:text-blue-800 font-medium"
-              >
-                Refresh notifications
-              </button>
-            </div>
-          )}
+          <div className="p-4 border-t border-gray-200">
+            <button
+              onClick={() => fetchNotifications(true)}
+              className="w-full text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Refresh notifications
+            </button>
+            <button
+              onClick={() => {
+                console.log('🔔 Force clearing cache and refetching...');
+                notificationCache.current.clear();
+                lastFetchTime.current = 0;
+                fetchNotifications(true);
+                fetchUnreadCount();
+              }}
+              className="w-full text-sm text-red-600 hover:text-red-800 font-medium mt-2"
+            >
+              Force refresh (clear cache)
+            </button>
+          </div>
         </div>
       )}
     </div>

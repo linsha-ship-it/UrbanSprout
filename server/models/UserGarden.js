@@ -125,3 +125,7 @@ userGardenSchema.index({ user: 1, 'plant.name': 1 }, { unique: true });
 module.exports = mongoose.model('UserGarden', userGardenSchema);
 
 
+
+
+
+

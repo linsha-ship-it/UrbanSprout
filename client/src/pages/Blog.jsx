@@ -231,6 +231,7 @@ const Blog = () => {
     activeToday: 0
   })
   const [topContributors, setTopContributors] = useState([])
+  const [trendingHashtags, setTrendingHashtags] = useState([])
   
   // Initialize with empty array - posts will be loaded from API
   const [posts, setPosts] = useState([])
@@ -246,9 +247,10 @@ const Blog = () => {
       loadUserCounts()
       loadCommunityStats()
     }
-    // Always load community stats and top contributors for public display
+    // Always load community stats, top contributors, and trending hashtags for public display
     loadCommunityStats()
     loadTopContributors()
+    loadTrendingHashtags()
   }, [user, posts])
 
   // Quick Tips slideshow effect
@@ -507,6 +509,19 @@ const Blog = () => {
     }
   }
 
+  // Load trending hashtags
+  const loadTrendingHashtags = async () => {
+    try {
+      const response = await apiCall('/blog/trending-hashtags?limit=5')
+      if (response.success && response.data) {
+        setTrendingHashtags(response.data)
+      }
+    } catch (error) {
+      console.error('Error loading trending hashtags:', error)
+      // Keep empty array if API fails
+    }
+  }
+
   // Load top contributors
   const loadTopContributors = async () => {
     try {
@@ -522,15 +537,6 @@ const Blog = () => {
 
   // Blog community stats - now using dynamic data
   const blogStats = communityStats
-
-  const trendingHashtags = [
-    { tag: '#PlantCare', count: 287, trend: 'up' },
-    { tag: '#IndoorPlants', count: 234, trend: 'up' },
-    { tag: '#BeginnerTips', count: 189, trend: 'down' },
-    { tag: '#UrbanGardening', count: 167, trend: 'up' },
-    { tag: '#DIY', count: 145, trend: 'up' },
-    { tag: '#PlantScience', count: 123, trend: 'up' }
-  ]
 
 
   const quickTips = [
@@ -1063,17 +1069,27 @@ const Blog = () => {
                   Trending Hashtags
                 </h3>
                 <div className="space-y-2">
-                  {trendingHashtags.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium text-green-600 text-sm">{item.tag}</div>
-                        <div className="text-xs text-green-500">{item.count} posts</div>
+                  {trendingHashtags.length > 0 ? (
+                    trendingHashtags.map((item, index) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-green-600 text-sm">{item.tag}</div>
+                          <div className="text-xs text-green-500">{item.count} posts</div>
+                        </div>
+                        <div className={`w-2 h-2 rounded-full ${
+                          item.trend === 'up' ? 'bg-green-500' : 'bg-red-500'
+                        }`}></div>
                       </div>
-                      <div className={`w-2 h-2 rounded-full ${
-                        item.trend === 'up' ? 'bg-green-500' : 'bg-red-500'
-                      }`}></div>
+                    ))
+                  ) : (
+                    <div className="text-center text-gray-500 py-4">
+                      <div className="text-gray-400 mb-2">🔍</div>
+                      <div className="text-sm">No trending hashtags yet</div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        Hashtags will appear here as users create posts
+                      </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
 
@@ -1310,6 +1326,7 @@ const CreatePostModal = ({ onClose, user, onCreatePost }) => {
             loadUserCounts()
             loadCommunityStats()
             loadTopContributors()
+            loadTrendingHashtags()
         }, 500)
       } else {
         alert(`Failed to create post: ${response.message || 'Unknown error'}`)
